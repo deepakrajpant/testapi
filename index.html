@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multiply API Service (Static Simulation)</title>
+  <style>
+    /* Basic styling for the page */
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    input[type="number"] {
+      padding: 10px;
+      width: 200px;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1em;
+    }
+    button {
+      padding: 10px 15px;
+      border: none;
+      background-color: #28a745;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #218838;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 1.2em;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Multiply a Number by 2</h1>
+    <input type="number" id="numberInput" placeholder="Enter a number">
+    <button onclick="multiplyNumber()">Multiply</button>
+    <div class="result" id="result"></div>
+  </div>
+
+  <script>
+    // Register the Service Worker (sw.js must be in the same directory)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(registration => {
+          console.log('Service Worker registered:', registration);
+        })
+        .catch(error => {
+          console.error('Service Worker registration failed:', error);
+        });
+    }
+
+    // Function to send the number to the "API" and display the result
+    function multiplyNumber() {
+      const numberInput = document.getElementById('numberInput').value;
+      const number = parseFloat(numberInput);
+
+      if (isNaN(number)) {
+        document.getElementById('result').innerText = "Please enter a valid number.";
+        return;
+      }
+
+      // Make a POST request to /api/multiply (the Service Worker will intercept this)
+      fetch('/api/multiply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ number: number })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          document.getElementById('result').innerText = "Error: " + data.error;
+        } else {
+          document.getElementById('result').innerText = "Result: " + data.result;
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('result').innerText = "Error calling API.";
+      });
+    }
+  </script>
+</body>
+</html>
