@@ -5,11 +5,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       (async function() {
         try {
-          // Clone the request to read its JSON body
+          // Clone and read the request body as JSON
           const requestClone = event.request.clone();
           const requestData = await requestClone.json();
 
-          // Validate that the request contains a numeric value
+          // Validate input: must have a number property
           if (typeof requestData.number !== 'number') {
             return new Response(
               JSON.stringify({ error: "Invalid input. Please provide a number." }),
