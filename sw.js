@@ -18,7 +18,7 @@ self.addEventListener('fetch', event => {
           }
           
           // Multiply the number by 2
-          const result = requestData.number * 2;
+          const result = requestData.number * 4;
           return new Response(
             JSON.stringify({ result: result }),
             { headers: { 'Content-Type': 'application/json' } }
