@@ -29,23 +29,24 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .hdr .user img{width:32px;height:32px;border-radius:50%;border:2px solid var(--line)}
 .hdr .user span{font-size:11px;font-weight:700;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* login */
 .login-box{max-width:420px;margin:60px auto;background:var(--card);border:1px solid var(--line);
   border-radius:20px;padding:32px 24px;box-shadow:var(--shadow);text-align:center}
 .login-box h2{font-size:20px;font-weight:800;margin-bottom:6px}
 .login-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px}
 .login-box .btn-google{display:flex;align-items:center;justify-content:center;gap:10px;
   width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);
-  font-size:14px;font-weight:800;cursor:pointer;transition:all .15s}
+  font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;font-family:inherit}
 .login-box .btn-google:hover{border-color:var(--red);background:var(--redl)}
 .login-box .btn-google:disabled{opacity:.5;cursor:not-allowed}
-.login-box .err{color:var(--bad);font-size:12px;font-weight:700;margin-top:12px;min-height:18px;line-height:1.5;white-space:pre-wrap;text-align:left}
-.login-box .info{color:var(--muted);font-size:11px;line-height:1.6;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);text-align:left}
+.login-box .err{color:var(--bad);font-size:12px;font-weight:700;margin-top:12px;min-height:18px;
+  line-height:1.5;white-space:pre-wrap;text-align:left}
+.login-box .info{color:var(--muted);font-size:11px;line-height:1.6;margin-top:14px;
+  padding-top:14px;border-top:1px solid var(--line);text-align:left}
 
-/* toolbar */
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
 .toolbar .btn{padding:9px 16px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);
-  color:var(--text);font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;width:auto;font-family:inherit}
+  color:var(--text);font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;
+  width:auto;font-family:inherit}
 .toolbar .btn:hover{border-color:var(--red);color:var(--red)}
 .toolbar .btn.primary{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff;border-color:transparent}
 .toolbar .btn.primary:hover{opacity:.9;color:#fff}
@@ -54,14 +55,12 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .toolbar .stat{font-size:11px;font-weight:700;color:var(--muted);background:var(--card);
   padding:7px 12px;border-radius:20px;border:1px solid var(--line)}
 
-/* filters */
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .filters select,.filters input{padding:9px 12px;border:1.5px solid var(--line);border-radius:10px;
   background:var(--card);font-size:12px;font-weight:600;color:var(--text);flex:1;min-width:130px;font-family:inherit}
 .filters input{flex:2;min-width:180px}
 .filters select:focus,.filters input:focus{outline:none;border-color:var(--red)}
 
-/* question list */
 .q-list{display:flex;flex-direction:column;gap:10px}
 .q-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;
   box-shadow:var(--shadow);transition:border-color .15s}
@@ -83,7 +82,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .q-item .q-actions button.preview{border-color:var(--ok);color:var(--ok)}
 .q-item .q-actions button.preview:hover{background:var(--ok);color:#fff}
 
-/* modal base */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;
   justify-content:center;z-index:100;padding:16px;overflow-y:auto;backdrop-filter:blur(3px)}
 .overlay.show{display:flex}
@@ -92,7 +90,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 @keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .modal-card h3{font-size:17px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 
-/* editor */
 .editor .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .editor .field{display:flex;flex-direction:column;gap:4px}
 .editor .field label{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
@@ -108,7 +105,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .editor .actions .save:disabled{opacity:.5;cursor:not-allowed}
 .editor .actions .cancel{background:var(--line);color:var(--muted)}
 
-/* preview */
 .preview-body{background:var(--bg);border-radius:14px;padding:16px;margin-bottom:14px}
 .preview-body .meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .preview-body .meta span{font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:20px;
@@ -138,7 +134,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .preview-body .opt.correct .ltr{background:var(--ok);border-color:var(--ok);color:#fff}
 .preview-body .opt .tx{flex:1;text-align:left}
 
-/* json box */
 .json-box textarea{width:100%;min-height:200px;padding:12px;border:1.5px solid var(--line);
   border-radius:10px;background:var(--bg);font-size:11px;font-family:ui-monospace,Menlo,monospace;
   line-height:1.5;resize:vertical;margin-bottom:12px;color:var(--text)}
@@ -148,7 +143,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .json-box .acts .exp{background:var(--ok);color:#fff}
 .json-box .acts .cls{background:var(--line);color:var(--muted)}
 
-/* confirm */
 .confirm-box{background:var(--card);border-radius:18px;padding:24px;max-width:360px;width:100%;
   text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto}
 .confirm-box h3{font-size:17px;font-weight:800;margin-bottom:8px;justify-content:center}
@@ -158,7 +152,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .confirm-box .acts .y{background:var(--bad);color:#fff}
 .confirm-box .acts .n{background:var(--line);color:var(--muted)}
 
-/* toast */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120px);
   background:var(--text);color:var(--bg);padding:12px 20px;border-radius:24px;
   font-size:13px;font-weight:700;z-index:200;opacity:0;transition:all .3s;pointer-events:none;
@@ -167,7 +160,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .toast.ok{background:var(--ok);color:#fff}
 .toast.err{background:var(--bad);color:#fff}
 
-/* loading / empty */
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 0;
   font-size:13px;color:var(--muted);font-weight:700}
 .spinner{width:20px;height:20px;border:2.5px solid var(--line);border-top-color:var(--red);
@@ -176,7 +168,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .empty{text-align:center;padding:40px 0;font-size:13px;color:var(--muted);font-weight:600;line-height:1.6}
 .empty .big{font-size:36px;margin-bottom:10px}
 
-/* banner */
 .banner{background:var(--badl);border:1px solid var(--bad);border-radius:12px;padding:12px 14px;
   font-size:12px;color:var(--bad);line-height:1.5;margin-bottom:14px;font-weight:600}
 .banner b{display:block;margin-bottom:4px;font-weight:800}
@@ -190,7 +181,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 <body>
 <div class="app">
 
-  <!-- HEADER -->
   <div class="hdr">
     <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
     <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
@@ -201,7 +191,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
     </div>
   </div>
 
-  <!-- LOGIN SCREEN -->
   <div id="loginScreen">
     <div class="login-box">
       <h2>Admin Login</h2>
@@ -218,7 +207,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
     </div>
   </div>
 
-  <!-- ADMIN PANEL -->
   <div id="adminPanel" style="display:none">
 
     <div class="banner" id="ruleWarning" style="display:none">
@@ -238,12 +226,8 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
     <div class="filters">
       <select id="filterSet">
         <option value="all">All Sets</option>
-        <option value="1">Set 1</option>
-        <option value="2">Set 2</option>
-        <option value="3">Set 3</option>
-        <option value="4">Set 4</option>
-        <option value="5">Set 5</option>
-        <option value="6">Set 6</option>
+        <option value="1">Set 1</option><option value="2">Set 2</option><option value="3">Set 3</option>
+        <option value="4">Set 4</option><option value="5">Set 5</option><option value="6">Set 6</option>
       </select>
       <select id="filterSection">
         <option value="all">All Sections</option>
@@ -262,7 +246,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 
 </div>
 
-<!-- EDITOR OVERLAY -->
 <div class="overlay" id="editorOverlay">
   <div class="modal-card editor">
     <h3 id="editorTitle">Add Question</h3>
@@ -310,10 +293,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
           <option value="C">C</option><option value="D">D</option>
         </select>
       </div>
-      <div class="field">
-        <label>Option A</label>
-        <input type="text" id="edA">
-      </div>
+      <div class="field"><label>Option A</label><input type="text" id="edA"></div>
     </div>
     <div class="row">
       <div class="field"><label>Option B</label><input type="text" id="edB"></div>
@@ -330,18 +310,16 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   </div>
 </div>
 
-<!-- PREVIEW OVERLAY -->
 <div class="overlay" id="previewOverlay">
   <div class="modal-card">
     <h3>Question Preview</h3>
     <div class="preview-body" id="previewContent"></div>
-    <div class="actions" style="display:flex;gap:8px;margin-top:16px">
+    <div style="display:flex;gap:8px;margin-top:16px">
       <button style="flex:1;padding:12px;border-radius:10px;border:0;background:var(--line);color:var(--muted);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit" id="previewCloseBtn">Close</button>
     </div>
   </div>
 </div>
 
-<!-- CONFIRM OVERLAY -->
 <div class="overlay" id="confirmOverlay">
   <div class="confirm-box">
     <h3 id="confirmTitle">Are you sure?</h3>
@@ -353,7 +331,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   </div>
 </div>
 
-<!-- JSON OVERLAY -->
 <div class="overlay" id="jsonOverlay">
   <div class="modal-card json-box">
     <h3 id="jsonTitle">JSON</h3>
@@ -366,13 +343,9 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   </div>
 </div>
 
-<!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script type="module">
-/* ==================================================================
-   FIREBASE IMPORTS (v10.12.0 modular)
-   ================================================================== */
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
@@ -403,11 +376,11 @@ provider.setCustomParameters({ prompt: "select_account" });
 /* ==================================================================
    STATE
    ================================================================== */
+// questions is array of OBJECTS (Firestore-compatible, no nested arrays)
 let questions = [];
 let editingIndex = -1;
 let currentUser = null;
 let isSaving = false;
-let authReady = false;
 
 const $ = id => document.getElementById(id);
 
@@ -420,7 +393,7 @@ function toast(msg, type = '') {
   t.textContent = msg;
   t.className = 'toast show' + (type ? ' ' + type : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
 /* ==================================================================
@@ -442,27 +415,63 @@ function isAdmin() {
     currentUser.emailVerified === true;
 }
 
-/* Explain Firebase error codes in friendly language */
+/* Normalize ANY row (array OR object) into a standard object.
+   This is the CRITICAL fix for the nested-array error. */
+function normalizeRow(raw) {
+  if (!raw) return null;
+
+  if (Array.isArray(raw)) {
+    // Legacy array format: [set, section, question, passage, image, audio, answer, A, B, C, D]
+    if (raw.length < 11) return null;
+    return {
+      set: Number(raw[0]) || 1,
+      section: String(raw[1] || 'sv').toLowerCase(),
+      question: String(raw[2] || ''),
+      passage: String(raw[3] || ''),
+      image: String(raw[4] || ''),
+      audio: String(raw[5] || ''),
+      answer: String(raw[6] || 'A').toUpperCase(),
+      A: String(raw[7] || ''),
+      B: String(raw[8] || ''),
+      C: String(raw[9] || ''),
+      D: String(raw[10] || '')
+    };
+  }
+
+  // Already object format
+  return {
+    set: Number(raw.set) || 1,
+    section: String(raw.section || 'sv').toLowerCase(),
+    question: String(raw.question || ''),
+    passage: String(raw.passage || ''),
+    image: String(raw.image || ''),
+    audio: String(raw.audio || ''),
+    answer: String(raw.answer || 'A').toUpperCase(),
+    A: String(raw.A || ''),
+    B: String(raw.B || ''),
+    C: String(raw.C || ''),
+    D: String(raw.D || '')
+  };
+}
+
 function explainError(err) {
   const code = err?.code || 'unknown';
   const msg = err?.message || 'Unknown error';
   const hints = {
     'auth/popup-closed-by-user': 'Login popup बन्द भयो। फेरि प्रयास गर्नुहोस्।',
-    'auth/popup-blocked': 'Browser ले popup रोक्यो। Popup अनुमति दिनुहोस् वा redirect प्रयास गर्नुहोस्।',
-    'auth/cancelled-popup-request': 'Popup पहिले नै खुला छ।',
-    'auth/unauthorized-domain': 'Firebase Console → Authentication → Settings → Authorized domains मा आफ्नो domain थप्नुहोस्।',
+    'auth/popup-blocked': 'Popup block भयो। Popup अनुमति दिनुहोस्।',
+    'auth/unauthorized-domain': 'Firebase Console → Auth → Settings → Authorized domains मा आफ्नो domain थप्नुहोस्।',
     'auth/operation-not-allowed': 'Firebase Console → Authentication → Sign-in method → Google Enable गर्नुहोस्।',
-    'auth/network-request-failed': 'Internet connection जाँच्नुहोस्।',
-    'auth/invalid-api-key': 'Firebase config को apiKey जाँच्नुहोस्।',
-    'permission-denied': 'Firestore Rules ले यो write deny गर्‍यो। Admin email verified छ कि जाँच्नुहोस्।',
-    'unavailable': 'Firestore पुग्न सकिएन। Internet जाँच्नुहोस्।',
-    'not-found': 'Document भेटिएन। Path जाँच्नुहोस्।'
+    'auth/network-request-failed': 'Internet जाँच्नुहोस्।',
+    'permission-denied': 'Firestore Rules ले write deny गर्‍यो। Admin email verified छ कि जाँच्नुहोस्।',
+    'invalid-argument': 'Data format गलत छ। (Nested arrays Firestore मा allowed छैनन्।)',
+    'unavailable': 'Firestore पुग्न सकिएन। Internet जाँच्नुहोस्।'
   };
   return code + ' — ' + msg + (hints[code] ? '\n\nसमाधान: ' + hints[code] : '');
 }
 
 /* ==================================================================
-   LOGIN / AUTH
+   AUTH
    ================================================================== */
 async function handleGoogleLogin() {
   const btn = $('googleLoginBtn');
@@ -474,7 +483,6 @@ async function handleGoogleLogin() {
     await signInWithPopup(auth, provider);
   } catch (e) {
     console.error('Popup login error:', e);
-    // Fallback to redirect for popup-blocked or mobile issues
     if (e.code === 'auth/popup-blocked' ||
         e.code === 'auth/operation-not-supported-in-this-environment' ||
         e.code === 'auth/popup-closed-by-user' ||
@@ -502,14 +510,12 @@ async function handleLogout() {
   }
 }
 
-/* Handle redirect result (mobile login) */
 getRedirectResult(auth).catch(e => {
   console.error('Redirect result error:', e);
   if (e.code) $('loginErr').textContent = explainError(e);
 });
 
 onAuthStateChanged(auth, async user => {
-  authReady = true;
   if (!user) {
     currentUser = null;
     questions = [];
@@ -545,7 +551,7 @@ onAuthStateChanged(auth, async user => {
 });
 
 /* ==================================================================
-   LOAD QUESTIONS
+   LOAD QUESTIONS (normalize everything to objects)
    ================================================================== */
 async function loadQuestions() {
   $('listContainer').innerHTML =
@@ -555,6 +561,7 @@ async function loadQuestions() {
   try {
     const snap = await getDoc(doc(db, DOC_PATH));
     if (!snap.exists()) {
+      questions = [];
       $('listContainer').innerHTML =
         '<div class="empty"><div class="big">📭</div>Document not found at ' + DOC_PATH + '</div>';
       return;
@@ -569,11 +576,13 @@ async function loadQuestions() {
       if (arrKey) rows = data[arrKey];
     }
     if (!rows) {
+      questions = [];
       $('listContainer').innerHTML =
         '<div class="empty"><div class="big">⚠️</div>No questions array found in document.</div>';
       return;
     }
-    questions = rows;
+    // Normalize: array rows -> objects
+    questions = rows.map(normalizeRow).filter(Boolean);
     renderList();
   } catch (e) {
     console.error('Load error:', e);
@@ -584,11 +593,14 @@ async function loadQuestions() {
 }
 
 /* ==================================================================
-   SAVE FULL ARRAY
+   SAVE (always objects → Firestore compatible)
    ================================================================== */
 async function saveQuestions(newQuestions, successMsg) {
   if (isSaving) { toast('Save in progress…', 'err'); return false; }
   if (!isAdmin()) { toast('Verified admin required', 'err'); return false; }
+
+  // Safety: ensure all are normalized objects (no nested arrays!)
+  const clean = newQuestions.map(normalizeRow).filter(Boolean);
 
   isSaving = true;
   try {
@@ -596,22 +608,24 @@ async function saveQuestions(newQuestions, successMsg) {
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
-      await setDoc(ref, { questions: newQuestions });
+      await setDoc(ref, { questions: clean });
     } else {
       const data = snap.data();
-      let field = 'questions';
-      if (!Array.isArray(data) && !Array.isArray(data.questions)) {
+      if (Array.isArray(data)) {
+        await setDoc(ref, { questions: clean });
+      } else if (Array.isArray(data.questions)) {
+        await updateDoc(ref, { questions: clean });
+      } else {
         const keys = Object.keys(data);
         const arrKey = keys.find(k => Array.isArray(data[k]));
-        if (arrKey) field = arrKey;
-      }
-      if (Array.isArray(data)) {
-        await setDoc(ref, { questions: newQuestions });
-      } else {
-        await updateDoc(ref, { [field]: newQuestions });
+        if (arrKey) {
+          await updateDoc(ref, { [arrKey]: clean });
+        } else {
+          await updateDoc(ref, { questions: clean });
+        }
       }
     }
-    questions = newQuestions;
+    questions = clean;
     renderList();
     toast(successMsg, 'ok');
     return true;
@@ -621,7 +635,7 @@ async function saveQuestions(newQuestions, successMsg) {
     if (e.code === 'permission-denied') {
       $('ruleWarning').style.display = 'block';
       $('ruleWarningMsg').textContent =
-        'Firestore rules did not allow this write. Verify your email is verified and matches ' + ADMIN_EMAIL + '.';
+        'Firestore rules did not allow this write. Verify your email matches ' + ADMIN_EMAIL + ' and is verified.';
     }
     return false;
   } finally {
@@ -630,17 +644,17 @@ async function saveQuestions(newQuestions, successMsg) {
 }
 
 /* ==================================================================
-   RENDER LIST
+   RENDER LIST (object-based)
    ================================================================== */
 function renderList() {
   const fSet = $('filterSet').value;
   const fSec = $('filterSection').value;
   const search = $('searchInput').value.trim().toLowerCase();
 
-  let list = questions.map((row, i) => ({ row, i }));
-  if (fSet !== 'all') list = list.filter(x => String(x.row[0]) === fSet);
-  if (fSec !== 'all') list = list.filter(x => String(x.row[1]).toLowerCase() === fSec);
-  if (search) list = list.filter(x => String(x.row[2] || '').toLowerCase().includes(search));
+  let list = questions.map((q, i) => ({ q, i }));
+  if (fSet !== 'all') list = list.filter(x => String(x.q.set) === fSet);
+  if (fSec !== 'all') list = list.filter(x => x.q.section === fSec);
+  if (search) list = list.filter(x => x.q.question.toLowerCase().includes(search));
 
   $('qCount').textContent = list.length + ' / ' + questions.length + ' shown';
 
@@ -658,14 +672,8 @@ function renderList() {
   const container = document.createElement('div');
   container.className = 'q-list';
 
-  list.forEach(({ row, i }) => {
-    const setNum = row[0] || '?';
-    const secCode = String(row[1] || '').toLowerCase();
-    const secName = { sv: 'Vocabulary', ce: 'Conversation', lc: 'Listening', rc: 'Reading' }[secCode] || secCode;
-    const qText = String(row[2] || '(no question text)');
-    const answer = String(row[6] || '?');
-    const img = row[4] ? String(row[4]).trim() : '';
-    const aud = row[5] ? String(row[5]).trim() : '';
+  list.forEach(({ q, i }) => {
+    const secName = { sv: 'Vocabulary', ce: 'Conversation', lc: 'Listening', rc: 'Reading' }[q.section] || q.section;
 
     const d = document.createElement('div');
     d.className = 'q-item';
@@ -674,18 +682,18 @@ function renderList() {
     top.className = 'q-top';
     top.innerHTML =
       '<span class="badge idx">#' + (i + 1) + '</span>' +
-      '<span class="badge">Set ' + escHtml(setNum) + '</span>' +
+      '<span class="badge">Set ' + escHtml(q.set) + '</span>' +
       '<span class="badge sec">' + escHtml(secName) + '</span>';
 
     const txt = document.createElement('div');
     txt.className = 'q-text';
-    txt.textContent = qText.length > 160 ? qText.slice(0, 160) + '…' : qText;
+    txt.textContent = q.question.length > 160 ? q.question.slice(0, 160) + '…' : q.question;
 
     const meta = document.createElement('div');
     meta.className = 'q-meta';
-    meta.innerHTML = '<span>Answer: <b>' + escHtml(answer) + '</b></span>' +
-      (img ? '<span>🖼 Image</span>' : '') +
-      (aud ? '<span>🔊 Audio</span>' : '');
+    meta.innerHTML = '<span>Answer: <b>' + escHtml(q.answer) + '</b></span>' +
+      (q.image ? '<span>🖼 Image</span>' : '') +
+      (q.audio ? '<span>🔊 Audio</span>' : '');
 
     const acts = document.createElement('div');
     acts.className = 'q-actions';
@@ -739,18 +747,18 @@ function openEditor(idx) {
     editingIndex = idx;
     $('editorTitle').textContent = 'Edit Question #' + (idx + 1);
     $('editorSaveBtn').textContent = 'Update';
-    const r = questions[idx];
-    $('edSet').value = r[0] || '1';
-    $('edSection').value = String(r[1] || 'sv').toLowerCase();
-    $('edQuestion').value = r[2] || '';
-    $('edPassage').value = r[3] || '';
-    $('edImage').value = r[4] || '';
-    $('edAudio').value = r[5] || '';
-    $('edAnswer').value = r[6] || 'A';
-    $('edA').value = r[7] || '';
-    $('edB').value = r[8] || '';
-    $('edC').value = r[9] || '';
-    $('edD').value = r[10] || '';
+    const q = questions[idx];
+    $('edSet').value = String(q.set);
+    $('edSection').value = q.section;
+    $('edQuestion').value = q.question;
+    $('edPassage').value = q.passage;
+    $('edImage').value = q.image;
+    $('edAudio').value = q.audio;
+    $('edAnswer').value = q.answer;
+    $('edA').value = q.A;
+    $('edB').value = q.B;
+    $('edC').value = q.C;
+    $('edD').value = q.D;
   }
   $('editorOverlay').classList.add('show');
 }
@@ -761,29 +769,29 @@ function closeEditor() {
 }
 
 async function saveQuestion() {
-  const set = Number($('edSet').value);
-  const section = $('edSection').value;
-  const question = $('edQuestion').value.trim();
-  const passage = $('edPassage').value.trim();
-  const image = $('edImage').value.trim();
-  const audio = $('edAudio').value.trim();
-  const answer = $('edAnswer').value;
-  const A = $('edA').value.trim();
-  const B = $('edB').value.trim();
-  const C = $('edC').value.trim();
-  const D = $('edD').value.trim();
+  const q = {
+    set: Number($('edSet').value),
+    section: $('edSection').value,
+    question: $('edQuestion').value.trim(),
+    passage: $('edPassage').value.trim(),
+    image: $('edImage').value.trim(),
+    audio: $('edAudio').value.trim(),
+    answer: $('edAnswer').value,
+    A: $('edA').value.trim(),
+    B: $('edB').value.trim(),
+    C: $('edC').value.trim(),
+    D: $('edD').value.trim()
+  };
 
-  if (!question) { toast('Question text is required', 'err'); $('edQuestion').focus(); return; }
-  if (!A || !B || !C) { toast('Options A, B, C are required', 'err'); return; }
-  if (answer === 'D' && !D) { toast('Answer is D but option D is empty', 'err'); return; }
-
-  const row = [set, section, question, passage, image, audio, answer, A, B, C, D];
+  if (!q.question) { toast('Question text is required', 'err'); $('edQuestion').focus(); return; }
+  if (!q.A || !q.B || !q.C) { toast('Options A, B, C are required', 'err'); return; }
+  if (q.answer === 'D' && !q.D) { toast('Answer is D but option D is empty', 'err'); return; }
 
   let newQuestions;
   if (editingIndex === -1) {
-    newQuestions = [...questions, row];
+    newQuestions = [...questions, q];
   } else {
-    newQuestions = questions.map((r, i) => i === editingIndex ? row : r);
+    newQuestions = questions.map((r, i) => i === editingIndex ? q : r);
   }
 
   $('editorSaveBtn').disabled = true;
@@ -841,44 +849,36 @@ function sceneDataUrl(kind) {
 }
 
 function openPreview(idx) {
-  const r = questions[idx];
-  if (!r) return;
+  const q = questions[idx];
+  if (!q) return;
 
-  const set = r[0] || '?';
-  const secCode = String(r[1] || '').toLowerCase();
   const secFull = {
     sv: 'Script & Vocabulary',
     ce: 'Conversation & Expression',
     lc: 'Listening Comprehension',
     rc: 'Reading Comprehension'
-  }[secCode] || secCode;
-  const marks = { sv: 3, ce: 4, lc: 6, rc: 7 }[secCode] || '?';
-  const qt = r[2] || '';
-  const passage = r[3] || '';
-  const img = r[4] ? String(r[4]).trim() : '';
-  const aud = r[5] ? String(r[5]).trim() : '';
-  const answer = String(r[6] || 'A').toUpperCase();
-  const opts = [r[7], r[8], r[9], r[10]].map(x => String(x == null ? '' : x).trim());
-  const ansIdx = 'ABCD'.indexOf(answer);
+  }[q.section] || q.section;
+  const marks = { sv: 3, ce: 4, lc: 6, rc: 7 }[q.section] || '?';
+  const ansIdx = 'ABCD'.indexOf(q.answer);
   const letters = 'ABCD';
+  const opts = [q.A, q.B, q.C, q.D];
 
   let imgHtml = '';
-  if (img) {
-    if (img.startsWith('scene:')) {
-      imgHtml = '<img src="' + sceneDataUrl(img.slice(6)) + '" alt="scene">';
+  if (q.image) {
+    if (q.image.startsWith('scene:')) {
+      imgHtml = '<img src="' + sceneDataUrl(q.image.slice(6)) + '" alt="scene">';
     } else {
-      imgHtml =
-        '<img src="' + escAttr(img) + '" alt="question image" ' +
+      imgHtml = '<img src="' + escAttr(q.image) + '" alt="question image" ' +
         'onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;img-err&quot;>Image failed to load</div>\')">';
     }
   }
 
   let audHtml = '';
-  if (aud) {
-    if (aud.startsWith('tts:')) {
-      audHtml = '<div class="tts-tag">🔊 TTS: ' + escHtml(aud.slice(4)) + '</div>';
+  if (q.audio) {
+    if (q.audio.startsWith('tts:')) {
+      audHtml = '<div class="tts-tag">🔊 TTS: ' + escHtml(q.audio.slice(4)) + '</div>';
     } else {
-      audHtml = '<div class="aud-row"><audio controls src="' + escAttr(aud) + '" ' +
+      audHtml = '<div class="aud-row"><audio controls src="' + escAttr(q.audio) + '" ' +
         'onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;img-err&quot;>Audio failed to load</div>\')"></audio></div>';
     }
   }
@@ -897,12 +897,12 @@ function openPreview(idx) {
   $('previewContent').innerHTML =
     '<div class="meta">' +
       '<span class="tag">Q#' + (idx + 1) + '</span>' +
-      '<span>Set ' + escHtml(set) + '</span>' +
+      '<span>Set ' + escHtml(q.set) + '</span>' +
       '<span>' + escHtml(secFull) + '</span>' +
       '<span class="mk">' + marks + ' marks</span>' +
     '</div>' +
-    (passage ? '<div class="passage">' + escHtml(passage) + '</div>' : '') +
-    '<div class="qt">' + escHtml(qt) + '</div>' +
+    (q.passage ? '<div class="passage">' + escHtml(q.passage) + '</div>' : '') +
+    '<div class="qt">' + escHtml(q.question) + '</div>' +
     mediaHtml +
     '<div class="opts">' + optsHtml + '</div>';
 
@@ -918,13 +918,13 @@ function closePreview() {
    ================================================================== */
 function openJsonModal(mode) {
   if (mode === 'export') {
-    $('jsonTitle').textContent = 'Export JSON';
+    $('jsonTitle').textContent = 'Export JSON (' + questions.length + ' questions)';
     $('jsonArea').value = JSON.stringify({ questions }, null, 2);
     $('jsonArea').readOnly = true;
     $('jsonImportConfirmBtn').style.display = 'none';
     $('jsonCopyBtn').style.display = 'block';
   } else {
-    $('jsonTitle').textContent = 'Import JSON (paste)';
+    $('jsonTitle').textContent = 'Import JSON';
     $('jsonArea').value = '';
     $('jsonArea').readOnly = false;
     $('jsonImportConfirmBtn').style.display = 'block';
@@ -960,33 +960,33 @@ async function importJson() {
     return;
   }
 
-  let newQuestions;
-  if (Array.isArray(parsed)) newQuestions = parsed;
-  else if (Array.isArray(parsed.questions)) newQuestions = parsed.questions;
+  let rawList;
+  if (Array.isArray(parsed)) rawList = parsed;
+  else if (Array.isArray(parsed.questions)) rawList = parsed.questions;
   else { toast('JSON must contain a "questions" array or be an array', 'err'); return; }
 
-  for (let i = 0; i < newQuestions.length; i++) {
-    const r = newQuestions[i];
-    if (!Array.isArray(r) || r.length < 11) {
-      toast('Invalid question at index ' + i + ': must be array with 11 elements', 'err');
-      return;
-    }
+  // Normalize and validate
+  const clean = [];
+  for (let i = 0; i < rawList.length; i++) {
+    const obj = normalizeRow(rawList[i]);
+    if (!obj) { toast('Invalid question at index ' + i, 'err'); return; }
+    clean.push(obj);
   }
 
   $('confirmTitle').textContent = 'Replace all questions?';
   $('confirmMsg').textContent =
     'You are about to REPLACE all ' + questions.length + ' existing questions with ' +
-    newQuestions.length + ' new ones. This cannot be undone.';
+    clean.length + ' new ones. This cannot be undone.';
   $('confirmYesBtn').onclick = async () => {
     closeConfirm();
-    const ok = await saveQuestions(newQuestions, 'Imported ' + newQuestions.length + ' questions ✓');
+    const ok = await saveQuestions(clean, 'Imported ' + clean.length + ' questions ✓');
     if (ok) closeJsonModal();
   };
   $('confirmOverlay').classList.add('show');
 }
 
 /* ==================================================================
-   WIRE UP STATIC BUTTONS (addEventListener — no inline onclick bug)
+   WIRE UP
    ================================================================== */
 $('googleLoginBtn').addEventListener('click', handleGoogleLogin);
 $('logoutBtn').addEventListener('click', handleLogout);
@@ -1005,30 +1005,11 @@ $('filterSet').addEventListener('change', renderList);
 $('filterSection').addEventListener('change', renderList);
 $('searchInput').addEventListener('input', renderList);
 
-/* Close overlays on backdrop click */
 document.querySelectorAll('.overlay').forEach(ov => {
   ov.addEventListener('click', e => {
     if (e.target === ov) ov.classList.remove('show');
   });
 });
-
-/* ==================================================================
-   EXPOSE FUNCTIONS TO WINDOW (safety — for any inline onclick)
-   ================================================================== */
-window.handleGoogleLogin = handleGoogleLogin;
-window.handleLogout = handleLogout;
-window.openEditor = openEditor;
-window.closeEditor = closeEditor;
-window.saveQuestion = saveQuestion;
-window.confirmDelete = confirmDelete;
-window.closeConfirm = closeConfirm;
-window.openPreview = openPreview;
-window.closePreview = closePreview;
-window.openJsonModal = openJsonModal;
-window.closeJsonModal = closeJsonModal;
-window.copyJson = copyJson;
-window.importJson = importJson;
-window.loadQuestions = loadQuestions;
 </script>
 </body>
 </html>
