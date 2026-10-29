@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Dream Japan — Review</title>
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { requireAuth, renderLayout, loadResult, esc, qs } from "./js/core.js";
+
+const ctx = await requireAuth();
+if (ctx) {
+  const { profile, isAdmin } = ctx;
+  renderLayout(profile, "sets", isAdmin);
+  const r = loadResult();
+  const filter = qs("filter") || "all";
+  if (!r) {
+    document.getElementById("app").innerHTML = `<div class="wrap" style="padding:24px">
+      <div class="card center"><div class="empty"><div class="big">📭</div>No result to review.</div></div></div>`;
+  } else {
+    renderReview(r, filter);
+  }
+}
+
+function renderReview(r, filter) {
+  document.getElementById("app").innerHTML = `
+    <div class="wrap" style="padding:16px 0 40px">
+      <button class="btn btn-ghost btn-sm mb-2" onclick="location.href='./result.html'">← Back</button>
+      <div class="flex-between mb-2">
+        <h2>Answer Review</h2>
+        <div class="flex" style="gap:6px">
+          <a class="btn btn-sm ${filter === "all" ? "btn-primary" : "btn-ghost"}" href="./review.html?filter=all">All</a>
+          <a class="btn btn-sm ${filter === "wrong" ? "btn-primary" : "btn-ghost"}" href="./review.html?filter=wrong">Wrong</a>
+        </div>
+      </div>
+      ${r.sections.map(s => {
+        const items = s.items.filter(it => filter === "all" || it.yourAns !== it.correctAns);
+        if (!items.length) return "";
+        return `<h3 class="mt-2 mb-1" style="color:var(--purple);font-size:12px;letter-spacing:.8px;text-transform:uppercase">${esc(s.name)}</h3>
+          ${items.map(it => `
+            <div class="card mb-1" style="border-left:4px solid ${it.yourAns === it.correctAns ? "var(--green)" : "var(--red)"}">
+              <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px">Q${it.idx + 1} · ${s.marks} marks${it.yourAns === undefined ? " · not answered" : ""}</div>
+              ${it.p ? `<div class="passage" style="font-size:13px;padding:10px;margin-bottom:8px">${esc(it.p)}</div>` : ""}
+              ${it.img ? `<img src="${esc(it.img)}" loading="lazy" style="width:100%;border-radius:10px;margin-bottom:8px" onerror="this.style.display='none'">` : ""}
+              ${it.au ? `<div class="muted small mb-1" style="font-weight:700">🔊 ${esc(it.au)}</div>` : ""}
+              <div style="font-size:13.5px;line-height:1.5;margin-bottom:8px;white-space:pre-line">${esc(it.q)}</div>
+              ${it.o.map((txt, i) => {
+                if (i === 3 && !txt) return "";
+                const isC = i === it.correctAns, isY = i === it.yourAns;
+                const style = isC ? "background:#d1fae5;border-color:var(--green)" : (isY && !isC ? "background:#fee2e2;border-color:var(--red)" : "");
+                return `<div style="padding:9px 11px;border:1px solid var(--border);border-radius:9px;margin-top:6px;font-size:12.5px;${style}">
+                  ${"ABCD"[i]}. ${esc(txt)} ${isC ? "✓ Correct" : ""} ${isY && !isC ? "✗ Your answer" : ""}</div>`;
+              }).join("")}
+            </div>`).join("")}`;
+      }).join("")}
+    </div>`;
+}
+</script>
+</body>
+</html>
