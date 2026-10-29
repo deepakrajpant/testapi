@@ -18,19 +18,19 @@ body{background:var(--bg);color:var(--text);min-height:100vh;padding:16px;
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   background:radial-gradient(circle at 85% -5%,rgba(201,69,54,.12),transparent 45%),
              radial-gradient(circle at -10% 105%,rgba(232,96,79,.10),transparent 40%)}
-.app{max-width:900px;margin:0 auto}
-.hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.app{max-width:960px;margin:0 auto}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
 .logo{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--red2),var(--red));
   display:grid;place-items:center;box-shadow:0 4px 14px rgba(201,69,54,.4);flex-shrink:0}
 .logo svg{width:22px;height:22px}
 .hdr h1{font-size:19px;font-weight:800;letter-spacing:-.4px}
 .hdr p{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:1.5px;margin-top:1px}
-.hdr .user{margin-left:auto;display:flex;align-items:center;gap:8px}
+.hdr .user{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .hdr .user img{width:32px;height:32px;border-radius:50%;border:2px solid var(--line)}
-.hdr .user span{font-size:11px;font-weight:700;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdr .user span{font-size:11px;font-weight:700;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* login */
-.login-box{max-width:400px;margin:80px auto;background:var(--card);border:1px solid var(--line);
+.login-box{max-width:420px;margin:60px auto;background:var(--card);border:1px solid var(--line);
   border-radius:20px;padding:32px 24px;box-shadow:var(--shadow);text-align:center}
 .login-box h2{font-size:20px;font-weight:800;margin-bottom:6px}
 .login-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px}
@@ -38,15 +38,18 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);
   font-size:14px;font-weight:800;cursor:pointer;transition:all .15s}
 .login-box .btn-google:hover{border-color:var(--red);background:var(--redl)}
-.login-box .err{color:var(--bad);font-size:12px;font-weight:700;margin-top:12px;min-height:18px}
+.login-box .btn-google:disabled{opacity:.5;cursor:not-allowed}
+.login-box .err{color:var(--bad);font-size:12px;font-weight:700;margin-top:12px;min-height:18px;line-height:1.5;white-space:pre-wrap;text-align:left}
+.login-box .info{color:var(--muted);font-size:11px;line-height:1.6;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);text-align:left}
 
 /* toolbar */
-.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
 .toolbar .btn{padding:9px 16px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);
-  color:var(--text);font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;width:auto}
+  color:var(--text);font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;width:auto;font-family:inherit}
 .toolbar .btn:hover{border-color:var(--red);color:var(--red)}
 .toolbar .btn.primary{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff;border-color:transparent}
-.toolbar .btn.primary:hover{opacity:.9}
+.toolbar .btn.primary:hover{opacity:.9;color:#fff}
+.toolbar .btn:disabled{opacity:.45;cursor:not-allowed}
 .toolbar .spacer{flex:1}
 .toolbar .stat{font-size:11px;font-weight:700;color:var(--muted);background:var(--card);
   padding:7px 12px;border-radius:20px;border:1px solid var(--line)}
@@ -54,24 +57,25 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 /* filters */
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .filters select,.filters input{padding:9px 12px;border:1.5px solid var(--line);border-radius:10px;
-  background:var(--card);font-size:12px;font-weight:600;color:var(--text);min-width:0;flex:1;min-width:120px}
-.filters input{flex:2;min-width:160px}
+  background:var(--card);font-size:12px;font-weight:600;color:var(--text);flex:1;min-width:130px;font-family:inherit}
+.filters input{flex:2;min-width:180px}
 .filters select:focus,.filters input:focus{outline:none;border-color:var(--red)}
 
 /* question list */
 .q-list{display:flex;flex-direction:column;gap:10px}
 .q-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;
-  box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s}
+  box-shadow:var(--shadow);transition:border-color .15s}
 .q-item:hover{border-color:var(--red2)}
 .q-item .q-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .q-item .q-top .badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;
   background:var(--redl);color:var(--red)}
 .q-item .q-top .badge.sec{background:var(--line);color:var(--muted)}
-.q-item .q-text{font-size:13.5px;line-height:1.5;margin-bottom:6px;word-break:break-word}
+.q-item .q-top .badge.idx{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.q-item .q-text{font-size:13.5px;line-height:1.5;margin-bottom:6px;word-break:break-word;white-space:pre-line}
 .q-item .q-meta{display:flex;gap:12px;font-size:10.5px;color:var(--muted);font-weight:600;flex-wrap:wrap}
 .q-item .q-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-.q-item .q-actions button{padding:6px 12px;border-radius:8px;border:1px solid var(--line);
-  background:var(--card);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.q-item .q-actions button{padding:7px 13px;border-radius:8px;border:1px solid var(--line);
+  background:var(--card);font-size:11.5px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit}
 .q-item .q-actions button.edit{border-color:var(--red2);color:var(--red)}
 .q-item .q-actions button.edit:hover{background:var(--red);color:#fff}
 .q-item .q-actions button.del{border-color:var(--bad);color:var(--bad)}
@@ -79,134 +83,160 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 .q-item .q-actions button.preview{border-color:var(--ok);color:var(--ok)}
 .q-item .q-actions button.preview:hover{background:var(--ok);color:#fff}
 
-/* editor modal */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;
-  justify-content:center;z-index:100;padding:20px;overflow-y:auto;backdrop-filter:blur(3px)}
+/* modal base */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;
+  justify-content:center;z-index:100;padding:16px;overflow-y:auto;backdrop-filter:blur(3px)}
 .overlay.show{display:flex}
-.editor{background:var(--card);border-radius:20px;padding:24px;max-width:640px;width:100%;
+.modal-card{background:var(--card);border-radius:20px;padding:22px;max-width:640px;width:100%;
   box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto;animation:in .25s}
 @keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-.editor h3{font-size:17px;font-weight:800;margin-bottom:16px}
+.modal-card h3{font-size:17px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+
+/* editor */
 .editor .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .editor .field{display:flex;flex-direction:column;gap:4px}
 .editor .field label{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .editor .field input,.editor .field select,.editor .field textarea{
   width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:9px;background:var(--bg);
   font-size:13px;font-weight:500;color:var(--text);font-family:inherit}
-.editor .field textarea{resize:vertical;min-height:60px;line-height:1.5}
+.editor .field textarea{resize:vertical;min-height:60px;line-height:1.5;font-family:inherit}
 .editor .field input:focus,.editor .field select:focus,.editor .field textarea:focus{outline:none;border-color:var(--red)}
 .editor .full{grid-column:1/-1}
 .editor .actions{display:flex;gap:8px;margin-top:16px}
-.editor .actions button{flex:1;padding:12px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer}
+.editor .actions button{flex:1;padding:12px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit}
 .editor .actions .save{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff}
-.editor .actions .cancel{background:var(--line);color:var(--muted)}
 .editor .actions .save:disabled{opacity:.5;cursor:not-allowed}
+.editor .actions .cancel{background:var(--line);color:var(--muted)}
 
-/* preview modal */
-.preview-box{background:var(--card);border-radius:20px;padding:24px;max-width:600px;width:100%;
-  box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto;animation:in .25s}
-.preview-box h3{font-size:16px;font-weight:800;margin-bottom:14px}
-.preview-box .pv-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-.preview-box .pv-meta span{font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:20px;
-  background:var(--redl);color:var(--red)}
-.preview-box .pv-meta span.sec{background:var(--line);color:var(--muted)}
-.preview-box .passage{background:var(--bg);border-left:4px solid var(--red2);border-radius:8px;
-  padding:12px;font-size:13.5px;line-height:1.7;margin-bottom:12px;white-space:pre-line}
-.preview-box .qt{font-size:16px;font-weight:700;line-height:1.6;margin-bottom:12px;white-space:pre-line}
-.preview-box img{width:100%;border-radius:12px;margin-bottom:12px;border:1px solid var(--line);display:block}
-.preview-box audio{width:100%;margin-bottom:12px}
-.preview-box .opt{padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;margin-top:7px;
-  font-size:13.5px;line-height:1.45}
-.preview-box .opt.correct{background:var(--okl);border-color:var(--ok);font-weight:700}
-.preview-box .opt .ltr{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--line);
-  text-align:center;line-height:22px;font-size:10px;font-weight:800;margin-right:6px;color:var(--muted)}
-.preview-box .opt.correct .ltr{background:var(--ok);color:#fff}
-.preview-box .pv-close{width:100%;padding:12px;border-radius:10px;border:0;background:var(--line);
-  color:var(--text);font-size:13px;font-weight:800;cursor:pointer;margin-top:12px}
+/* preview */
+.preview-body{background:var(--bg);border-radius:14px;padding:16px;margin-bottom:14px}
+.preview-body .meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.preview-body .meta span{font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:20px;
+  background:var(--card);border:1px solid var(--line);color:var(--muted)}
+.preview-body .meta span.tag{background:var(--redl);color:var(--red);border-color:transparent}
+.preview-body .meta span.mk{background:var(--card);color:var(--text)}
+.preview-body .passage{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--red2);
+  border-radius:10px;padding:13px;font-size:14px;line-height:1.7;margin-bottom:12px;
+  white-space:pre-line;text-align:left;color:var(--text)}
+.preview-body .qt{font-size:17px;font-weight:700;line-height:1.6;margin-bottom:12px;
+  white-space:pre-line;text-align:left;color:var(--text)}
+.preview-body .media{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+.preview-body .media img{width:100%;border-radius:12px;border:1px solid var(--line);display:block}
+.preview-body .media .img-err{background:var(--badl);color:var(--bad);padding:10px;border-radius:8px;
+  font-size:12px;font-weight:700;text-align:center}
+.preview-body .media .aud-row{display:flex;align-items:center;gap:10px;background:var(--card);
+  border:1px solid var(--line);padding:10px 12px;border-radius:12px}
+.preview-body .media .aud-row audio{flex:1;min-width:0;height:36px}
+.preview-body .media .tts-tag{font-size:11.5px;color:var(--muted);font-weight:700;padding:8px 12px;
+  background:var(--card);border:1px dashed var(--line);border-radius:8px}
+.preview-body .opts{display:flex;flex-direction:column;gap:8px}
+.preview-body .opt{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--line);
+  border-radius:11px;background:var(--card);font-size:13.5px;line-height:1.4}
+.preview-body .opt .ltr{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted);flex-shrink:0}
+.preview-body .opt.correct{background:var(--okl);border-color:var(--ok);font-weight:700}
+.preview-body .opt.correct .ltr{background:var(--ok);border-color:var(--ok);color:#fff}
+.preview-body .opt .tx{flex:1;text-align:left}
+
+/* json box */
+.json-box textarea{width:100%;min-height:200px;padding:12px;border:1.5px solid var(--line);
+  border-radius:10px;background:var(--bg);font-size:11px;font-family:ui-monospace,Menlo,monospace;
+  line-height:1.5;resize:vertical;margin-bottom:12px;color:var(--text)}
+.json-box .acts{display:flex;gap:8px}
+.json-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit}
+.json-box .acts .imp{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff}
+.json-box .acts .exp{background:var(--ok);color:#fff}
+.json-box .acts .cls{background:var(--line);color:var(--muted)}
+
+/* confirm */
+.confirm-box{background:var(--card);border-radius:18px;padding:24px;max-width:360px;width:100%;
+  text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto}
+.confirm-box h3{font-size:17px;font-weight:800;margin-bottom:8px;justify-content:center}
+.confirm-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px}
+.confirm-box .acts{display:flex;gap:8px}
+.confirm-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit}
+.confirm-box .acts .y{background:var(--bad);color:#fff}
+.confirm-box .acts .n{background:var(--line);color:var(--muted)}
 
 /* toast */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120px);
   background:var(--text);color:var(--bg);padding:12px 20px;border-radius:24px;
   font-size:13px;font-weight:700;z-index:200;opacity:0;transition:all .3s;pointer-events:none;
-  box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw;text-align:center}
+  box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw;text-align:center;line-height:1.4}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 .toast.ok{background:var(--ok);color:#fff}
 .toast.err{background:var(--bad);color:#fff}
 
-/* loading */
+/* loading / empty */
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 0;
   font-size:13px;color:var(--muted);font-weight:700}
 .spinner{width:20px;height:20px;border:2.5px solid var(--line);border-top-color:var(--red);
-  border-radius:50%;animation:spin .7s linear infinite}
+  border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
-.empty{text-align:center;padding:40px 0;font-size:13px;color:var(--muted);font-weight:600}
+.empty{text-align:center;padding:40px 0;font-size:13px;color:var(--muted);font-weight:600;line-height:1.6}
+.empty .big{font-size:36px;margin-bottom:10px}
 
-/* confirm */
-.confirm-box{background:var(--card);border-radius:18px;padding:24px;max-width:340px;width:100%;
-  text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2)}
-.confirm-box h3{font-size:17px;font-weight:800;margin-bottom:8px}
-.confirm-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px}
-.confirm-box .acts{display:flex;gap:8px}
-.confirm-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer}
-.confirm-box .acts .y{background:var(--bad);color:#fff}
-.confirm-box .acts .n{background:var(--line);color:var(--muted)}
+/* banner */
+.banner{background:var(--badl);border:1px solid var(--bad);border-radius:12px;padding:12px 14px;
+  font-size:12px;color:var(--bad);line-height:1.5;margin-bottom:14px;font-weight:600}
+.banner b{display:block;margin-bottom:4px;font-weight:800}
 
-/* json box */
-.json-box{background:var(--card);border-radius:18px;padding:24px;max-width:600px;width:100%;
-  box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto}
-.json-box h3{font-size:16px;font-weight:800;margin-bottom:12px}
-.json-box textarea{width:100%;min-height:180px;padding:12px;border:1.5px solid var(--line);
-  border-radius:10px;background:var(--bg);font-size:11px;font-family:ui-monospace,Menlo,monospace;
-  line-height:1.5;resize:vertical;margin-bottom:12px}
-.json-box .acts{display:flex;gap:8px}
-.json-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:12px;font-weight:800;cursor:pointer}
-.json-box .acts .imp{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff}
-.json-box .acts .exp{background:var(--ok);color:#fff}
-.json-box .acts .cls{background:var(--line);color:var(--muted)}
+@media (max-width:520px){
+  .editor .row{grid-template-columns:1fr}
+  .hdr .user span{display:none}
+}
 </style>
 </head>
 <body>
 <div class="app">
 
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
+    <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
+    <div class="user" id="userArea" style="display:none">
+      <img id="userPhoto" src="" alt="" style="display:none">
+      <span id="userEmail"></span>
+      <button class="btn" id="logoutBtn" style="padding:6px 12px;font-size:11px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);cursor:pointer;font-weight:800;font-family:inherit">Logout</button>
+    </div>
+  </div>
+
   <!-- LOGIN SCREEN -->
   <div id="loginScreen">
-    <div class="hdr">
-      <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
-      <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
-    </div>
     <div class="login-box">
       <h2>Admin Login</h2>
       <p>Sign in with your authorized Google account to manage questions.</p>
-      <button class="btn-google" id="googleLoginBtn" onclick="handleGoogleLogin()">
+      <button class="btn-google" id="googleLoginBtn">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         Continue with Google
       </button>
       <div class="err" id="loginErr"></div>
+      <div class="info">
+        <b>Admin only:</b> deepakrajpant978@gmail.com<br>
+        Login गर्नुभएको account verified हुनुपर्छ।
+      </div>
     </div>
   </div>
 
   <!-- ADMIN PANEL -->
   <div id="adminPanel" style="display:none">
-    <div class="hdr">
-      <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
-      <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
-      <div class="user">
-        <img id="userPhoto" src="" alt="" style="display:none">
-        <span id="userEmail"></span>
-        <button class="btn" style="padding:6px 12px;font-size:11px" onclick="handleLogout()">Logout</button>
-      </div>
+
+    <div class="banner" id="ruleWarning" style="display:none">
+      <b>⚠ Write denied by Firestore Rules</b>
+      <span id="ruleWarningMsg"></span>
     </div>
 
     <div class="toolbar">
-      <button class="btn primary" onclick="openEditor()">＋ Add Question</button>
-      <button class="btn" onclick="openJsonModal('import')">📥 Import JSON</button>
-      <button class="btn" onclick="openJsonModal('export')">📤 Export JSON</button>
+      <button class="btn primary" id="addBtn">＋ Add Question</button>
+      <button class="btn" id="refreshBtn">↻ Refresh</button>
+      <button class="btn" id="importBtn">📥 Import JSON</button>
+      <button class="btn" id="exportBtn">📤 Export JSON</button>
       <span class="spacer"></span>
       <span class="stat" id="qCount">0 questions</span>
     </div>
 
     <div class="filters">
-      <select id="filterSet" onchange="renderList()">
+      <select id="filterSet">
         <option value="all">All Sets</option>
         <option value="1">Set 1</option>
         <option value="2">Set 2</option>
@@ -215,14 +245,14 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
         <option value="5">Set 5</option>
         <option value="6">Set 6</option>
       </select>
-      <select id="filterSection" onchange="renderList()">
+      <select id="filterSection">
         <option value="all">All Sections</option>
         <option value="sv">Script & Vocabulary</option>
         <option value="ce">Conversation & Expression</option>
         <option value="lc">Listening Comprehension</option>
         <option value="rc">Reading Comprehension</option>
       </select>
-      <input type="text" id="searchInput" placeholder="Search question text…" oninput="renderList()">
+      <input type="text" id="searchInput" placeholder="Search question text…">
     </div>
 
     <div id="listContainer">
@@ -234,7 +264,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 
 <!-- EDITOR OVERLAY -->
 <div class="overlay" id="editorOverlay">
-  <div class="editor">
+  <div class="modal-card editor">
     <h3 id="editorTitle">Add Question</h3>
     <div class="row">
       <div class="field">
@@ -264,11 +294,11 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
     </div>
     <div class="row">
       <div class="field">
-        <label>Image URL (optional)</label>
+        <label>Image (URL or scene:rain/sun/snow)</label>
         <input type="text" id="edImage" placeholder="scene:rain or https://…">
       </div>
       <div class="field">
-        <label>Audio URL (optional)</label>
+        <label>Audio (URL or tts:text)</label>
         <input type="text" id="edAudio" placeholder="tts:こんにちは or https://…">
       </div>
     </div>
@@ -294,15 +324,21 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
       <input type="text" id="edD">
     </div>
     <div class="actions">
-      <button class="cancel" onclick="closeEditor()">Cancel</button>
-      <button class="save" id="saveBtn" onclick="saveQuestion()">Save</button>
+      <button class="cancel" id="editorCancelBtn">Cancel</button>
+      <button class="save" id="editorSaveBtn">Save</button>
     </div>
   </div>
 </div>
 
 <!-- PREVIEW OVERLAY -->
 <div class="overlay" id="previewOverlay">
-  <div class="preview-box" id="previewContent"></div>
+  <div class="modal-card">
+    <h3>Question Preview</h3>
+    <div class="preview-body" id="previewContent"></div>
+    <div class="actions" style="display:flex;gap:8px;margin-top:16px">
+      <button style="flex:1;padding:12px;border-radius:10px;border:0;background:var(--line);color:var(--muted);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit" id="previewCloseBtn">Close</button>
+    </div>
+  </div>
 </div>
 
 <!-- CONFIRM OVERLAY -->
@@ -311,21 +347,21 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
     <h3 id="confirmTitle">Are you sure?</h3>
     <p id="confirmMsg"></p>
     <div class="acts">
-      <button class="n" onclick="closeConfirm()">Cancel</button>
-      <button class="y" id="confirmYes">Delete</button>
+      <button class="n" id="confirmNoBtn">Cancel</button>
+      <button class="y" id="confirmYesBtn">Delete</button>
     </div>
   </div>
 </div>
 
 <!-- JSON OVERLAY -->
 <div class="overlay" id="jsonOverlay">
-  <div class="json-box">
+  <div class="modal-card json-box">
     <h3 id="jsonTitle">JSON</h3>
-    <textarea id="jsonArea" readonly></textarea>
+    <textarea id="jsonArea" spellcheck="false"></textarea>
     <div class="acts">
-      <button class="cls" onclick="closeJsonModal()">Close</button>
-      <button class="imp" id="jsonImportBtn" onclick="importJson()" style="display:none">Import</button>
-      <button class="exp" id="jsonExportBtn" onclick="exportJson()">Copy</button>
+      <button class="cls" id="jsonCloseBtn">Close</button>
+      <button class="imp" id="jsonImportConfirmBtn" style="display:none">Import</button>
+      <button class="exp" id="jsonCopyBtn" style="display:none">Copy</button>
     </div>
   </div>
 </div>
@@ -335,12 +371,14 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
 
 <script type="module">
 /* ==================================================================
-   FIREBASE CONFIGURATION
+   FIREBASE IMPORTS (v10.12.0 modular)
    ================================================================== */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { initializeApp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+         getRedirectResult, onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, setDoc }
+import { getFirestore, doc, getDoc, setDoc, updateDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -353,20 +391,23 @@ const firebaseConfig = {
   measurementId: "G-V3M5626QM5"
 };
 
+const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
+const DOC_PATH = "jftoctnovset/QORwII8D7qLZ7wuCDW36";
+
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
-
-const DOC_PATH = "jftoctnovset/QORwII8D7qLZ7wuCDW36";
-const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: "select_account" });
 
 /* ==================================================================
    STATE
    ================================================================== */
-let questions = [];        // current questions array from Firestore
-let editingIndex = -1;     // -1 = adding new, >=0 = editing existing
+let questions = [];
+let editingIndex = -1;
 let currentUser = null;
 let isSaving = false;
+let authReady = false;
 
 const $ = id => document.getElementById(id);
 
@@ -383,127 +424,205 @@ function toast(msg, type = '') {
 }
 
 /* ==================================================================
-   AUTH
+   HELPERS
    ================================================================== */
-function handleGoogleLogin() {
-  const provider = new GoogleAuthProvider();
-  provider.addScope('profile');
-  provider.addScope('email');
-  $('loginErr').textContent = '';
-
-  signInWithPopup(auth, provider).catch(err => {
-    console.error('Login error:', err);
-    let msg = 'Login failed. ';
-    if (err.code === 'auth/popup-closed-by-user') msg += 'Popup was closed. Please try again.';
-    else if (err.code === 'auth/popup-blocked') msg += 'Popup blocked. Allow popups for this site.';
-    else if (err.code === 'auth/cancelled-popup-request') msg += 'Request cancelled.';
-    else msg += err.message || 'Unknown error.';
-    $('loginErr').textContent = msg;
-  });
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function isAdmin() {
+  return !!currentUser &&
+    (currentUser.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase() &&
+    currentUser.emailVerified === true;
 }
 
-function handleLogout() {
-  signOut(auth).catch(err => toast('Logout error: ' + err.message, 'err'));
+/* Explain Firebase error codes in friendly language */
+function explainError(err) {
+  const code = err?.code || 'unknown';
+  const msg = err?.message || 'Unknown error';
+  const hints = {
+    'auth/popup-closed-by-user': 'Login popup बन्द भयो। फेरि प्रयास गर्नुहोस्।',
+    'auth/popup-blocked': 'Browser ले popup रोक्यो। Popup अनुमति दिनुहोस् वा redirect प्रयास गर्नुहोस्।',
+    'auth/cancelled-popup-request': 'Popup पहिले नै खुला छ।',
+    'auth/unauthorized-domain': 'Firebase Console → Authentication → Settings → Authorized domains मा आफ्नो domain थप्नुहोस्।',
+    'auth/operation-not-allowed': 'Firebase Console → Authentication → Sign-in method → Google Enable गर्नुहोस्।',
+    'auth/network-request-failed': 'Internet connection जाँच्नुहोस्।',
+    'auth/invalid-api-key': 'Firebase config को apiKey जाँच्नुहोस्।',
+    'permission-denied': 'Firestore Rules ले यो write deny गर्‍यो। Admin email verified छ कि जाँच्नुहोस्।',
+    'unavailable': 'Firestore पुग्न सकिएन। Internet जाँच्नुहोस्।',
+    'not-found': 'Document भेटिएन। Path जाँच्नुहोस्।'
+  };
+  return code + ' — ' + msg + (hints[code] ? '\n\nसमाधान: ' + hints[code] : '');
 }
 
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    if (user.email !== ADMIN_EMAIL || !user.emailVerified) {
-      $('loginScreen').style.display = 'block';
-      $('adminPanel').style.display = 'none';
-      $('loginErr').textContent = 'Unauthorized account. Only ' + ADMIN_EMAIL + ' (verified) can access this dashboard.';
-      await signOut(auth);
-      return;
+/* ==================================================================
+   LOGIN / AUTH
+   ================================================================== */
+async function handleGoogleLogin() {
+  const btn = $('googleLoginBtn');
+  const err = $('loginErr');
+  btn.disabled = true;
+  err.textContent = '';
+
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    console.error('Popup login error:', e);
+    // Fallback to redirect for popup-blocked or mobile issues
+    if (e.code === 'auth/popup-blocked' ||
+        e.code === 'auth/operation-not-supported-in-this-environment' ||
+        e.code === 'auth/popup-closed-by-user' ||
+        e.code === 'auth/cancelled-popup-request') {
+      try {
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (re) {
+        err.textContent = explainError(re);
+      }
+    } else {
+      err.textContent = explainError(e);
     }
-    currentUser = user;
-    $('loginScreen').style.display = 'none';
-    $('adminPanel').style.display = 'block';
-    $('userEmail').textContent = user.email;
-    if (user.photoURL) {
-      $('userPhoto').src = user.photoURL;
-      $('userPhoto').style.display = 'block';
-    }
-    await loadQuestions();
-  } else {
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await signOut(auth);
+    toast('Logged out', 'ok');
+  } catch (e) {
+    toast('Logout failed: ' + e.message, 'err');
+  }
+}
+
+/* Handle redirect result (mobile login) */
+getRedirectResult(auth).catch(e => {
+  console.error('Redirect result error:', e);
+  if (e.code) $('loginErr').textContent = explainError(e);
+});
+
+onAuthStateChanged(auth, async user => {
+  authReady = true;
+  if (!user) {
+    currentUser = null;
+    questions = [];
+    $('loginScreen').style.display = 'block';
+    $('adminPanel').style.display = 'none';
+    $('userArea').style.display = 'none';
+    return;
+  }
+
+  if (user.email !== ADMIN_EMAIL || !user.emailVerified) {
     currentUser = null;
     $('loginScreen').style.display = 'block';
     $('adminPanel').style.display = 'none';
-    questions = [];
+    $('userArea').style.display = 'none';
+    $('loginErr').textContent =
+      'Unauthorized account.\nEmail: ' + (user.email || '?') +
+      '\nVerified: ' + user.emailVerified +
+      '\n\nOnly ' + ADMIN_EMAIL + ' (verified) can access.';
+    await signOut(auth);
+    return;
   }
+
+  currentUser = user;
+  $('loginScreen').style.display = 'none';
+  $('adminPanel').style.display = 'block';
+  $('userArea').style.display = 'flex';
+  $('userEmail').textContent = user.email;
+  if (user.photoURL) {
+    $('userPhoto').src = user.photoURL;
+    $('userPhoto').style.display = 'block';
+  }
+  await loadQuestions();
 });
 
 /* ==================================================================
-   FIRESTORE LOAD
+   LOAD QUESTIONS
    ================================================================== */
-async function loadQuestions(showLoading = true) {
-  if (showLoading) $('listContainer').innerHTML = '<div class="loading"><div class="spinner"></div> Loading questions…</div>';
+async function loadQuestions() {
+  $('listContainer').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Loading questions…</div>';
+  $('ruleWarning').style.display = 'none';
+
   try {
     const snap = await getDoc(doc(db, DOC_PATH));
     if (!snap.exists()) {
-      $('listContainer').innerHTML = '<div class="empty">Document not found. Check Firestore path.</div>';
-      toast('Document not found', 'err');
+      $('listContainer').innerHTML =
+        '<div class="empty"><div class="big">📭</div>Document not found at ' + DOC_PATH + '</div>';
       return;
     }
     const data = snap.data();
-    // Support both { questions: [...] } and direct array
-    if (Array.isArray(data)) {
-      questions = data;
-    } else if (Array.isArray(data.questions)) {
-      questions = data.questions;
-    } else {
-      // Try to find any array field
+    let rows = null;
+    if (Array.isArray(data)) rows = data;
+    else if (Array.isArray(data.questions)) rows = data.questions;
+    else {
       const keys = Object.keys(data);
       const arrKey = keys.find(k => Array.isArray(data[k]));
-      if (arrKey) {
-        questions = data[arrKey];
-        toast('Using array field: "' + arrKey + '"', '');
-      } else {
-        $('listContainer').innerHTML = '<div class="empty">No questions array found in document.</div>';
-        return;
-      }
+      if (arrKey) rows = data[arrKey];
     }
+    if (!rows) {
+      $('listContainer').innerHTML =
+        '<div class="empty"><div class="big">⚠️</div>No questions array found in document.</div>';
+      return;
+    }
+    questions = rows;
     renderList();
-  } catch (err) {
-    console.error('Load error:', err);
-    $('listContainer').innerHTML = '<div class="empty">Failed to load questions: ' + escHtml(err.message) + '</div>';
-    toast('Load failed: ' + err.message, 'err');
+  } catch (e) {
+    console.error('Load error:', e);
+    $('listContainer').innerHTML =
+      '<div class="empty"><div class="big">❌</div>Failed to load: ' + escHtml(e.message) + '</div>';
+    toast('Load failed: ' + e.message, 'err');
   }
 }
 
 /* ==================================================================
-   SAVE TO FIRESTORE (full array write)
+   SAVE FULL ARRAY
    ================================================================== */
-async function saveQuestionsToFirestore(newQuestions) {
+async function saveQuestions(newQuestions, successMsg) {
   if (isSaving) { toast('Save in progress…', 'err'); return false; }
+  if (!isAdmin()) { toast('Verified admin required', 'err'); return false; }
+
   isSaving = true;
   try {
-    const docRef = doc(db, DOC_PATH);
-    // Check existing doc to preserve other fields
-    const snap = await getDoc(docRef);
+    const ref = doc(db, DOC_PATH);
+    const snap = await getDoc(ref);
+
     if (!snap.exists()) {
-      await setDoc(docRef, { questions: newQuestions });
+      await setDoc(ref, { questions: newQuestions });
     } else {
       const data = snap.data();
-      if (Array.isArray(data)) {
-        // Document itself is an array (unusual) — overwrite
-        await setDoc(docRef, { questions: newQuestions });
-      } else if (Array.isArray(data.questions)) {
-        await updateDoc(docRef, { questions: newQuestions });
-      } else {
+      let field = 'questions';
+      if (!Array.isArray(data) && !Array.isArray(data.questions)) {
         const keys = Object.keys(data);
         const arrKey = keys.find(k => Array.isArray(data[k]));
-        if (arrKey) {
-          await updateDoc(docRef, { [arrKey]: newQuestions });
-        } else {
-          await updateDoc(docRef, { questions: newQuestions });
-        }
+        if (arrKey) field = arrKey;
+      }
+      if (Array.isArray(data)) {
+        await setDoc(ref, { questions: newQuestions });
+      } else {
+        await updateDoc(ref, { [field]: newQuestions });
       }
     }
     questions = newQuestions;
+    renderList();
+    toast(successMsg, 'ok');
     return true;
-  } catch (err) {
-    console.error('Save error:', err);
-    toast('Save failed: ' + err.message, 'err');
+  } catch (e) {
+    console.error('Save error:', e);
+    toast('Save failed: ' + (e.code || '') + ' — ' + e.message, 'err');
+    if (e.code === 'permission-denied') {
+      $('ruleWarning').style.display = 'block';
+      $('ruleWarningMsg').textContent =
+        'Firestore rules did not allow this write. Verify your email is verified and matches ' + ADMIN_EMAIL + '.';
+    }
     return false;
   } finally {
     isSaving = false;
@@ -523,11 +642,15 @@ function renderList() {
   if (fSec !== 'all') list = list.filter(x => String(x.row[1]).toLowerCase() === fSec);
   if (search) list = list.filter(x => String(x.row[2] || '').toLowerCase().includes(search));
 
-  $('qCount').textContent = list.length + ' question' + (list.length === 1 ? '' : 's');
+  $('qCount').textContent = list.length + ' / ' + questions.length + ' shown';
 
   const c = $('listContainer');
+  if (!questions.length) {
+    c.innerHTML = '<div class="empty"><div class="big">📝</div>No questions yet.<br>Click <b>＋ Add Question</b> to begin.</div>';
+    return;
+  }
   if (!list.length) {
-    c.innerHTML = '<div class="empty">No questions match your filters.</div>';
+    c.innerHTML = '<div class="empty"><div class="big">🔍</div>No questions match your filters.</div>';
     return;
   }
 
@@ -538,7 +661,7 @@ function renderList() {
   list.forEach(({ row, i }) => {
     const setNum = row[0] || '?';
     const secCode = String(row[1] || '').toLowerCase();
-    const secName = { sv: 'Vocab', ce: 'Conv', lc: 'Listen', rc: 'Read' }[secCode] || secCode;
+    const secName = { sv: 'Vocabulary', ce: 'Conversation', lc: 'Listening', rc: 'Reading' }[secCode] || secCode;
     const qText = String(row[2] || '(no question text)');
     const answer = String(row[6] || '?');
     const img = row[4] ? String(row[4]).trim() : '';
@@ -549,32 +672,47 @@ function renderList() {
 
     const top = document.createElement('div');
     top.className = 'q-top';
-    top.innerHTML = '<span class="badge">Set ' + setNum + '</span>' +
-      '<span class="badge sec">' + secName + '</span>';
+    top.innerHTML =
+      '<span class="badge idx">#' + (i + 1) + '</span>' +
+      '<span class="badge">Set ' + escHtml(setNum) + '</span>' +
+      '<span class="badge sec">' + escHtml(secName) + '</span>';
 
     const txt = document.createElement('div');
     txt.className = 'q-text';
-    txt.textContent = qText.length > 120 ? qText.slice(0, 120) + '…' : qText;
+    txt.textContent = qText.length > 160 ? qText.slice(0, 160) + '…' : qText;
 
     const meta = document.createElement('div');
     meta.className = 'q-meta';
-    meta.innerHTML = '<span>Ans: ' + answer + '</span>' +
-      '<span>' + (img ? '🖼 Image' : '') + ' ' + (aud ? '🔊 Audio' : '') + '</span>' +
-      '<span>#' + (i + 1) + '</span>';
+    meta.innerHTML = '<span>Answer: <b>' + escHtml(answer) + '</b></span>' +
+      (img ? '<span>🖼 Image</span>' : '') +
+      (aud ? '<span>🔊 Audio</span>' : '');
 
     const acts = document.createElement('div');
     acts.className = 'q-actions';
-    acts.innerHTML =
-      '<button class="preview">Preview</button>' +
-      '<button class="edit">Edit</button>' +
-      '<button class="del">Delete</button>';
 
-    acts.querySelector('.preview').onclick = (e) => { e.stopPropagation(); openPreview(i); };
-    acts.querySelector('.edit').onclick = (e) => { e.stopPropagation(); openEditor(i); };
-    acts.querySelector('.del').onclick = (e) => { e.stopPropagation(); confirmDelete(i); };
-    d.onclick = () => openPreview(i);
+    const previewBtn = document.createElement('button');
+    previewBtn.className = 'preview';
+    previewBtn.textContent = 'Preview';
+    previewBtn.onclick = () => openPreview(i);
 
-    d.appendChild(top); d.appendChild(txt); d.appendChild(meta); d.appendChild(acts);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit';
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = () => openEditor(i);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del';
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = () => confirmDelete(i);
+
+    acts.appendChild(previewBtn);
+    acts.appendChild(editBtn);
+    acts.appendChild(delBtn);
+
+    d.appendChild(top);
+    d.appendChild(txt);
+    d.appendChild(meta);
+    d.appendChild(acts);
     container.appendChild(d);
   });
 
@@ -585,11 +723,10 @@ function renderList() {
    EDITOR
    ================================================================== */
 function openEditor(idx) {
-  editingIndex = (idx === undefined || idx === null) ? -1 : idx;
-  $('editorTitle').textContent = editingIndex === -1 ? 'Add Question' : 'Edit Question';
-  $('saveBtn').textContent = editingIndex === -1 ? 'Add' : 'Update';
-
-  if (editingIndex === -1) {
+  if (idx === undefined || idx === null) {
+    editingIndex = -1;
+    $('editorTitle').textContent = 'Add Question';
+    $('editorSaveBtn').textContent = 'Add';
     $('edSet').value = '1';
     $('edSection').value = 'sv';
     $('edQuestion').value = '';
@@ -599,7 +736,10 @@ function openEditor(idx) {
     $('edAnswer').value = 'A';
     $('edA').value = ''; $('edB').value = ''; $('edC').value = ''; $('edD').value = '';
   } else {
-    const r = questions[editingIndex];
+    editingIndex = idx;
+    $('editorTitle').textContent = 'Edit Question #' + (idx + 1);
+    $('editorSaveBtn').textContent = 'Update';
+    const r = questions[idx];
     $('edSet').value = r[0] || '1';
     $('edSection').value = String(r[1] || 'sv').toLowerCase();
     $('edQuestion').value = r[2] || '';
@@ -621,7 +761,7 @@ function closeEditor() {
 }
 
 async function saveQuestion() {
-  const set = $('edSet').value;
+  const set = Number($('edSet').value);
   const section = $('edSection').value;
   const question = $('edQuestion').value.trim();
   const passage = $('edPassage').value.trim();
@@ -633,12 +773,11 @@ async function saveQuestion() {
   const C = $('edC').value.trim();
   const D = $('edD').value.trim();
 
-  // Validation
   if (!question) { toast('Question text is required', 'err'); $('edQuestion').focus(); return; }
   if (!A || !B || !C) { toast('Options A, B, C are required', 'err'); return; }
   if (answer === 'D' && !D) { toast('Answer is D but option D is empty', 'err'); return; }
 
-  const row = [Number(set), section, question, passage, image, audio, answer, A, B, C, D];
+  const row = [set, section, question, passage, image, audio, answer, A, B, C, D];
 
   let newQuestions;
   if (editingIndex === -1) {
@@ -647,19 +786,19 @@ async function saveQuestion() {
     newQuestions = questions.map((r, i) => i === editingIndex ? row : r);
   }
 
-  $('saveBtn').disabled = true;
-  $('saveBtn').textContent = 'Saving…';
+  $('editorSaveBtn').disabled = true;
+  const oldText = $('editorSaveBtn').textContent;
+  $('editorSaveBtn').textContent = 'Saving…';
 
-  const ok = await saveQuestionsToFirestore(newQuestions);
+  const ok = await saveQuestions(
+    newQuestions,
+    editingIndex === -1 ? 'Question added ✓' : 'Question updated ✓'
+  );
 
-  $('saveBtn').disabled = false;
-  $('saveBtn').textContent = editingIndex === -1 ? 'Add' : 'Update';
+  $('editorSaveBtn').disabled = false;
+  $('editorSaveBtn').textContent = oldText;
 
-  if (ok) {
-    closeEditor();
-    renderList();
-    toast(editingIndex === -1 ? 'Question added ✓' : 'Question updated ✓', 'ok');
-  }
+  if (ok) closeEditor();
 }
 
 /* ==================================================================
@@ -667,15 +806,12 @@ async function saveQuestion() {
    ================================================================== */
 function confirmDelete(idx) {
   $('confirmTitle').textContent = 'Delete this question?';
-  $('confirmMsg').textContent = 'This will permanently remove question #' + (idx + 1) + ' from Firestore. This cannot be undone.';
-  $('confirmYes').onclick = async () => {
+  $('confirmMsg').textContent =
+    'Question #' + (idx + 1) + ' will be permanently removed from Firestore. This cannot be undone.';
+  $('confirmYesBtn').onclick = async () => {
     closeConfirm();
     const newQuestions = questions.filter((_, i) => i !== idx);
-    const ok = await saveQuestionsToFirestore(newQuestions);
-    if (ok) {
-      renderList();
-      toast('Question deleted', 'ok');
-    }
+    await saveQuestions(newQuestions, 'Question deleted');
   };
   $('confirmOverlay').classList.add('show');
 }
@@ -687,66 +823,6 @@ function closeConfirm() {
 /* ==================================================================
    PREVIEW
    ================================================================== */
-function openPreview(idx) {
-  const r = questions[idx];
-  if (!r) return;
-  const set = r[0] || '?';
-  const secCode = String(r[1] || '').toLowerCase();
-  const secName = { sv: 'Script & Vocabulary', ce: 'Conversation & Expression',
-    lc: 'Listening Comprehension', rc: 'Reading Comprehension' }[secCode] || secCode;
-  const qt = r[2] || '';
-  const passage = r[3] || '';
-  const img = r[4] ? String(r[4]).trim() : '';
-  const aud = r[5] ? String(r[5]).trim() : '';
-  const answer = String(r[6] || 'A').toUpperCase();
-  const opts = [r[7], r[8], r[9], r[10]].map(x => String(x == null ? '' : x).trim());
-
-  const ansIdx = 'ABCD'.indexOf(answer);
-  const letters = 'ABCD';
-
-  let imgHtml = '';
-  if (img) {
-    if (img.startsWith('scene:')) {
-      // Use scene SVG generator from mock test
-      const kind = img.slice(6);
-      imgHtml = '<img src="' + sceneDataUrl(kind) + '" alt="scene" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Image failed to load</div>\')">';
-    } else {
-      imgHtml = '<img src="' + escAttr(img) + '" alt="question image" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Image failed to load: ' + escHtml(img) + '</div>\')">';
-    }
-  }
-
-  let audHtml = '';
-  if (aud) {
-    if (aud.startsWith('tts:')) {
-      audHtml = '<div style="padding:10px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:12px">🔊 TTS: ' + escHtml(aud.slice(4)) + '</div>';
-    } else {
-      audHtml = '<audio controls src="' + escAttr(aud) + '" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Audio failed to load</div>\')"></audio>';
-    }
-  }
-
-  let optsHtml = '';
-  opts.forEach((txt, i) => {
-    if (i === 3 && !txt) return; // skip empty D
-    const isCorrect = i === ansIdx;
-    optsHtml += '<div class="opt' + (isCorrect ? ' correct' : '') + '">' +
-      '<span class="ltr">' + letters[i] + '</span>' + escHtml(txt) +
-      (isCorrect ? ' ✓' : '') + '</div>';
-  });
-
-  $('previewContent').innerHTML =
-    '<h3>Question Preview</h3>' +
-    '<div class="pv-meta"><span>Set ' + set + '</span><span class="sec">' + escHtml(secName) + '</span><span>Answer: ' + answer + '</span></div>' +
-    (passage ? '<div class="passage">' + escHtml(passage) + '</div>' : '') +
-    imgHtml +
-    audHtml +
-    '<div class="qt">' + escHtml(qt) + '</div>' +
-    optsHtml +
-    '<button class="pv-close" onclick="document.getElementById(\'previewOverlay\').classList.remove(\'show\')">Close</button>';
-
-  $('previewOverlay').classList.add('show');
-}
-
-/* Scene SVG generator (same as mock test) */
 function sceneDataUrl(kind) {
   const sky = { rain: '#7f94a8', sun: '#6ec1f2', snow: '#c8d6e5', cloud: '#9fb3c4' }[kind] || '#6ec1f2';
   let x = '';
@@ -764,35 +840,112 @@ function sceneDataUrl(kind) {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
+function openPreview(idx) {
+  const r = questions[idx];
+  if (!r) return;
+
+  const set = r[0] || '?';
+  const secCode = String(r[1] || '').toLowerCase();
+  const secFull = {
+    sv: 'Script & Vocabulary',
+    ce: 'Conversation & Expression',
+    lc: 'Listening Comprehension',
+    rc: 'Reading Comprehension'
+  }[secCode] || secCode;
+  const marks = { sv: 3, ce: 4, lc: 6, rc: 7 }[secCode] || '?';
+  const qt = r[2] || '';
+  const passage = r[3] || '';
+  const img = r[4] ? String(r[4]).trim() : '';
+  const aud = r[5] ? String(r[5]).trim() : '';
+  const answer = String(r[6] || 'A').toUpperCase();
+  const opts = [r[7], r[8], r[9], r[10]].map(x => String(x == null ? '' : x).trim());
+  const ansIdx = 'ABCD'.indexOf(answer);
+  const letters = 'ABCD';
+
+  let imgHtml = '';
+  if (img) {
+    if (img.startsWith('scene:')) {
+      imgHtml = '<img src="' + sceneDataUrl(img.slice(6)) + '" alt="scene">';
+    } else {
+      imgHtml =
+        '<img src="' + escAttr(img) + '" alt="question image" ' +
+        'onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;img-err&quot;>Image failed to load</div>\')">';
+    }
+  }
+
+  let audHtml = '';
+  if (aud) {
+    if (aud.startsWith('tts:')) {
+      audHtml = '<div class="tts-tag">🔊 TTS: ' + escHtml(aud.slice(4)) + '</div>';
+    } else {
+      audHtml = '<div class="aud-row"><audio controls src="' + escAttr(aud) + '" ' +
+        'onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;img-err&quot;>Audio failed to load</div>\')"></audio></div>';
+    }
+  }
+
+  let optsHtml = '';
+  opts.forEach((txt, i) => {
+    if (i === 3 && !txt) return;
+    const isCorrect = i === ansIdx;
+    optsHtml += '<div class="opt' + (isCorrect ? ' correct' : '') + '">' +
+      '<span class="ltr">' + letters[i] + '</span>' +
+      '<span class="tx">' + escHtml(txt) + (isCorrect ? '  ✓' : '') + '</span></div>';
+  });
+
+  const mediaHtml = (imgHtml || audHtml) ? '<div class="media">' + imgHtml + audHtml + '</div>' : '';
+
+  $('previewContent').innerHTML =
+    '<div class="meta">' +
+      '<span class="tag">Q#' + (idx + 1) + '</span>' +
+      '<span>Set ' + escHtml(set) + '</span>' +
+      '<span>' + escHtml(secFull) + '</span>' +
+      '<span class="mk">' + marks + ' marks</span>' +
+    '</div>' +
+    (passage ? '<div class="passage">' + escHtml(passage) + '</div>' : '') +
+    '<div class="qt">' + escHtml(qt) + '</div>' +
+    mediaHtml +
+    '<div class="opts">' + optsHtml + '</div>';
+
+  $('previewOverlay').classList.add('show');
+}
+
+function closePreview() {
+  $('previewOverlay').classList.remove('show');
+}
+
 /* ==================================================================
-   JSON IMPORT / EXPORT
+   JSON EXPORT / IMPORT
    ================================================================== */
 function openJsonModal(mode) {
   if (mode === 'export') {
     $('jsonTitle').textContent = 'Export JSON';
     $('jsonArea').value = JSON.stringify({ questions }, null, 2);
     $('jsonArea').readOnly = true;
-    $('jsonImportBtn').style.display = 'none';
-    $('jsonExportBtn').style.display = 'block';
-    $('jsonExportBtn').textContent = '📋 Copy to Clipboard';
-    $('jsonExportBtn').onclick = () => {
-      navigator.clipboard.writeText($('jsonArea').value)
-        .then(() => toast('JSON copied ✓', 'ok'))
-        .catch(() => toast('Copy failed', 'err'));
-    };
+    $('jsonImportConfirmBtn').style.display = 'none';
+    $('jsonCopyBtn').style.display = 'block';
   } else {
-    $('jsonTitle').textContent = 'Import JSON';
+    $('jsonTitle').textContent = 'Import JSON (paste)';
     $('jsonArea').value = '';
     $('jsonArea').readOnly = false;
-    $('jsonImportBtn').style.display = 'block';
-    $('jsonExportBtn').style.display = 'none';
-    $('jsonImportBtn').onclick = importJson;
+    $('jsonImportConfirmBtn').style.display = 'block';
+    $('jsonCopyBtn').style.display = 'none';
   }
   $('jsonOverlay').classList.add('show');
 }
 
 function closeJsonModal() {
   $('jsonOverlay').classList.remove('show');
+}
+
+async function copyJson() {
+  try {
+    await navigator.clipboard.writeText($('jsonArea').value);
+    toast('JSON copied ✓', 'ok');
+  } catch {
+    $('jsonArea').select();
+    document.execCommand('copy');
+    toast('JSON copied ✓', 'ok');
+  }
 }
 
 async function importJson() {
@@ -807,53 +960,50 @@ async function importJson() {
     return;
   }
 
-  // Accept { questions: [...] } or direct array
   let newQuestions;
-  if (Array.isArray(parsed)) {
-    newQuestions = parsed;
-  } else if (Array.isArray(parsed.questions)) {
-    newQuestions = parsed.questions;
-  } else {
-    toast('JSON must contain a "questions" array or be an array', 'err');
-    return;
-  }
+  if (Array.isArray(parsed)) newQuestions = parsed;
+  else if (Array.isArray(parsed.questions)) newQuestions = parsed.questions;
+  else { toast('JSON must contain a "questions" array or be an array', 'err'); return; }
 
-  // Validate each row is an array with at least 11 elements
   for (let i = 0; i < newQuestions.length; i++) {
     const r = newQuestions[i];
     if (!Array.isArray(r) || r.length < 11) {
-      toast('Invalid question at index ' + i + ': must be an array with 11 elements', 'err');
+      toast('Invalid question at index ' + i + ': must be array with 11 elements', 'err');
       return;
     }
   }
 
-  $('confirmTitle').textContent = 'Import ' + newQuestions.length + ' questions?';
-  $('confirmMsg').textContent = 'This will REPLACE all existing questions in Firestore. Existing questions will be deleted.';
-  $('confirmYes').onclick = async () => {
+  $('confirmTitle').textContent = 'Replace all questions?';
+  $('confirmMsg').textContent =
+    'You are about to REPLACE all ' + questions.length + ' existing questions with ' +
+    newQuestions.length + ' new ones. This cannot be undone.';
+  $('confirmYesBtn').onclick = async () => {
     closeConfirm();
-    const ok = await saveQuestionsToFirestore(newQuestions);
-    if (ok) {
-      closeJsonModal();
-      renderList();
-      toast('Imported ' + newQuestions.length + ' questions ✓', 'ok');
-    }
+    const ok = await saveQuestions(newQuestions, 'Imported ' + newQuestions.length + ' questions ✓');
+    if (ok) closeJsonModal();
   };
   $('confirmOverlay').classList.add('show');
 }
 
 /* ==================================================================
-   HELPERS
+   WIRE UP STATIC BUTTONS (addEventListener — no inline onclick bug)
    ================================================================== */
-function escHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-function escAttr(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+$('googleLoginBtn').addEventListener('click', handleGoogleLogin);
+$('logoutBtn').addEventListener('click', handleLogout);
+$('addBtn').addEventListener('click', () => openEditor());
+$('refreshBtn').addEventListener('click', loadQuestions);
+$('importBtn').addEventListener('click', () => openJsonModal('import'));
+$('exportBtn').addEventListener('click', () => openJsonModal('export'));
+$('editorCancelBtn').addEventListener('click', closeEditor);
+$('editorSaveBtn').addEventListener('click', saveQuestion);
+$('previewCloseBtn').addEventListener('click', closePreview);
+$('confirmNoBtn').addEventListener('click', closeConfirm);
+$('jsonCloseBtn').addEventListener('click', closeJsonModal);
+$('jsonCopyBtn').addEventListener('click', copyJson);
+$('jsonImportConfirmBtn').addEventListener('click', importJson);
+$('filterSet').addEventListener('change', renderList);
+$('filterSection').addEventListener('change', renderList);
+$('searchInput').addEventListener('input', renderList);
 
 /* Close overlays on backdrop click */
 document.querySelectorAll('.overlay').forEach(ov => {
@@ -861,6 +1011,24 @@ document.querySelectorAll('.overlay').forEach(ov => {
     if (e.target === ov) ov.classList.remove('show');
   });
 });
+
+/* ==================================================================
+   EXPOSE FUNCTIONS TO WINDOW (safety — for any inline onclick)
+   ================================================================== */
+window.handleGoogleLogin = handleGoogleLogin;
+window.handleLogout = handleLogout;
+window.openEditor = openEditor;
+window.closeEditor = closeEditor;
+window.saveQuestion = saveQuestion;
+window.confirmDelete = confirmDelete;
+window.closeConfirm = closeConfirm;
+window.openPreview = openPreview;
+window.closePreview = closePreview;
+window.openJsonModal = openJsonModal;
+window.closeJsonModal = closeJsonModal;
+window.copyJson = copyJson;
+window.importJson = importJson;
+window.loadQuestions = loadQuestions;
 </script>
 </body>
 </html>
