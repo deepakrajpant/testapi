@@ -4,100 +4,135 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dream Japan | Firebase Manager</title>
+<meta name="theme-color" content="#2457d6">
+<title>Dream Japan - Firebase Manager</title>
 
 <style>
 :root {
-  --bg:#f3f6fc; --card:#fff; --text:#172033;
-  --muted:#667085; --primary:#2457d6;
-  --border:#d9e1ee; --green:#137547; --red:#b42318;
+  --bg:#f4f7fc;
+  --card:#fff;
+  --text:#172033;
+  --muted:#667085;
+  --primary:#2457d6;
+  --border:#dce3ed;
+  --green:#137547;
+  --red:#b42318;
 }
 * { box-sizing:border-box; }
 body {
-  margin:0; padding:16px; background:var(--bg);
-  color:var(--text); font-family:Arial,sans-serif;
+  margin:0;
+  padding:15px;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
 }
-main { max-width:850px; margin:auto; }
+main { max-width:800px; margin:auto; }
 header { padding:12px 0 18px; }
-h1 { font-size:25px; margin:0 0 7px; }
-h2 { font-size:18px; margin:0 0 14px; }
-p { line-height:1.55; }
+header h1 { margin:0 0 6px; font-size:27px; }
+header p { margin:0; color:var(--muted); }
 .card {
-  background:var(--card); border:1px solid var(--border);
-  border-radius:15px; padding:17px; margin-bottom:15px;
+  background:var(--card);
+  padding:17px;
+  margin-bottom:15px;
+  border:1px solid var(--border);
+  border-radius:15px;
 }
-label { display:block; font-weight:bold; font-size:14px; margin:12px 0 6px; }
-input,textarea,select {
-  width:100%; padding:12px; border:1px solid var(--border);
-  border-radius:9px; background:#fff; color:var(--text); font-size:15px;
+h2 { margin:0 0 14px; font-size:18px; }
+label {
+  display:block;
+  font-size:14px;
+  font-weight:bold;
+  margin:12px 0 6px;
 }
-textarea { min-height:190px; resize:vertical; }
+input,textarea {
+  display:block;
+  width:100%;
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:white;
+  font-size:15px;
+  color:var(--text);
+}
+textarea { min-height:180px; resize:vertical; }
 button {
-  width:100%; padding:13px; margin-top:10px;
-  border:0; border-radius:9px; background:var(--primary);
-  color:#fff; font-size:15px; font-weight:bold; cursor:pointer;
+  display:block;
+  width:100%;
+  padding:13px;
+  margin-top:10px;
+  border:0;
+  border-radius:9px;
+  background:var(--primary);
+  color:white;
+  font-size:15px;
+  font-weight:bold;
+  cursor:pointer;
 }
-button.secondary { background:#e8eefb; color:#24499c; }
-button.danger { background:var(--red); }
 button:disabled { opacity:.55; cursor:not-allowed; }
+button.secondary { background:#e9eefb; color:#24499c; }
 .status {
-  padding:12px; border-radius:9px; background:#eef2f7;
-  color:#344054; overflow-wrap:anywhere; white-space:pre-wrap;
-  font-size:14px; line-height:1.5;
+  padding:12px;
+  border-radius:9px;
+  background:#edf1f6;
+  font-size:14px;
+  line-height:1.6;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
 }
-.status.ok { background:#e7f7ed; color:var(--green); }
+.status.ok { background:#e6f7ec; color:var(--green); }
 .status.err { background:#fff0f0; color:var(--red); }
 .small { color:var(--muted); font-size:13px; line-height:1.6; }
 .hidden { display:none !important; }
 .stats { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
-.stat { padding:9px 12px; border-radius:8px; background:#edf3ff; font-size:14px; }
-.q { border:1px solid var(--border); padding:12px; margin-top:10px; border-radius:9px; overflow-wrap:anywhere; }
-.q h3 { font-size:15px; margin:0 0 8px; }
-.q p { margin:6px 0; font-size:14px; }
+.stat { background:#edf3ff; padding:9px 11px; border-radius:8px; font-size:13px; }
+.q { border:1px solid var(--border); padding:12px; border-radius:9px; margin-top:10px; overflow-wrap:anywhere; }
+.q h3 { margin:0 0 8px; font-size:15px; }
+.q p { font-size:14px; line-height:1.5; margin:6px 0; }
 </style>
 </head>
 
 <body>
 <main>
+
 <header>
-  <h1>Dream Japan</h1>
-  <p>JFT Mock Test — Firebase Question Manager</p>
+  <h1>Dream Japan 🇯🇵</h1>
+  <p>JFT Mock Test — Firebase Admin Panel</p>
 </header>
 
 <section class="card">
-  <h2>1. Admin / User Login</h2>
-  <div id="authStatus" class="status">Checking authentication...</div>
-  <button id="loginBtn">Continue with Google</button>
+  <h2>1. Google Login</h2>
+  <div id="authStatus" class="status">Firebase जडान हुँदैछ...</div>
+  <button id="loginBtn" disabled>Continue with Google</button>
   <button id="logoutBtn" class="secondary hidden">Logout</button>
   <p class="small">
-    Google login सफल भएमा profile Firestore को users collection मा save हुन्छ।
-    प्रश्न write गर्न Firestore Rules ले अनुमति दिएको admin account चाहिन्छ।
+    Google login सफल भएपछि user profile Firestore को users collection मा save हुनेछ।
   </p>
 </section>
 
 <section class="card">
-  <h2>2. Firebase Question Database</h2>
+  <h2>2. Question Database</h2>
 
-  <label>Collection</label>
+  <label>Collection Name</label>
   <input id="collection" value="jftoctnovset">
 
   <label>Document ID</label>
   <input id="documentId" value="QORwII8D7qLZ7wuCDW36">
 
-  <button id="readBtn">Read Questions</button>
-  <button id="backupBtn" class="secondary">Download JSON Backup</button>
+  <button id="readBtn" disabled>Read Questions</button>
+  <button id="backupBtn" class="secondary" disabled>Download Backup JSON</button>
 
   <div id="readStatus" class="status" style="margin-top:12px">
-    Login गरेपछि Read Questions थिच्नुहोस्।
+    Login गरेपछि प्रश्न पढ्न सक्नुहुन्छ।
   </div>
+
   <div id="stats" class="stats"></div>
   <div id="questionList"></div>
 </section>
 
 <section class="card">
-  <h2>3. Import / Write Questions</h2>
+  <h2>3. Import Questions</h2>
 
-  <label>Choose JSON file</label>
+  <label>Choose JSON File</label>
   <input id="jsonFile" type="file" accept=".json,application/json">
 
   <label>Paste JSON</label>
@@ -107,14 +142,14 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 
   <button id="validateBtn" class="secondary">Validate JSON</button>
   <div id="writeStatus" class="status" style="margin-top:12px">
-    JSON validate गरेपछि मात्र Write गर्न मिल्छ।
+    पहिले JSON validate गर्नुहोस्।
   </div>
 
-  <button id="writeBtn" disabled>Write Questions to Firestore</button>
+  <button id="writeBtn" disabled>Write Questions to Firebase</button>
 
   <p class="small">
-    सावधानी: Write गर्दा यो document को पुरानो data replace हुन्छ।
-    पहिला Read गरेर backup download गर्नुहोस्।
+    सावधानी: Write गर्दा यस document को पुरानो data replace हुन्छ।
+    पहिले Read गरेर backup लिनुहोस्।
   </p>
 </section>
 
@@ -138,11 +173,11 @@ button:disabled { opacity:.55; cursor:not-allowed; }
   ]
 }</pre>
   <p class="small">
-    section: sv = Script & Vocabulary, ce = Conversation & Expression,
-    lc = Listening Comprehension, rc = Reading Comprehension.
-    image र audio मा hosted URL राख्नुहोस्।
+    Section: sv, ce, lc, rc
+    <br>Image र audio मा URL राख्नुहोस्।
   </p>
 </section>
+
 </main>
 
 <script type="module">
@@ -150,15 +185,24 @@ import { initializeApp }
   from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 
 import {
-  getAuth, GoogleAuthProvider, signInWithRedirect,
-  getRedirectResult, onAuthStateChanged, signOut
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
+  signOut
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
 import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
-/* Your Firebase web app configuration */
+/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyD_JxMqTdYiW2DF8lgAlojh1quO32M0CuI",
   authDomain: "dream-japan-9cad8.firebaseapp.com",
@@ -176,20 +220,66 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+provider.setCustomParameters({
+  prompt: "select_account"
+});
+
 const $ = id => document.getElementById(id);
 
 let currentUser = null;
 let questions = [];
 let pendingQuestions = null;
-let loginError = "";
+let authReady = false;
 
-function showStatus(id, message, type = "") {
+function show(id, message, type = "") {
   const el = $(id);
   el.textContent = message;
   el.className = "status" + (type ? " " + type : "");
 }
 
-function questionRef() {
+function explainError(error) {
+  const code = error?.code || "unknown";
+  const message = error?.message || "Unknown error";
+
+  const hints = {
+    "auth/unauthorized-domain":
+      "Firebase Console → Authentication → Settings → Authorized domains मा तपाईंको वास्तविक website domain थप्नुहोस्।",
+    "auth/operation-not-allowed":
+      "Firebase Console → Authentication → Sign-in method → Google लाई Enable गर्नुहोस्।",
+    "auth/popup-blocked":
+      "Browser ले popup रोक्यो। Google Login फेरि थिच्नुहोस् वा Chrome मा खोल्नुहोस्।",
+    "auth/popup-closed-by-user":
+      "Login popup बन्द भयो। फेरि प्रयास गर्नुहोस्।",
+    "auth/network-request-failed":
+      "Internet connection जाँच्नुहोस् र फेरि प्रयास गर्नुहोस्।",
+    "auth/unauthorized-continue-uri":
+      "Firebase Authorized domains मा हालको website domain थप्नुहोस्।",
+    "auth/invalid-api-key":
+      "Firebase project को Web App config जाँच्नुहोस्।"
+  };
+
+  return code + "\n" + message +
+    (hints[code] ? "\n\nसमाधान: " + hints[code] : "");
+}
+
+function isAdmin() {
+  return !!currentUser &&
+    currentUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() &&
+    currentUser.emailVerified === true;
+}
+
+function updateButtons() {
+  const signedIn = !!currentUser;
+  $("loginBtn").classList.toggle("hidden", signedIn);
+  $("logoutBtn").classList.toggle("hidden", !signedIn);
+
+  $("loginBtn").disabled = !authReady;
+  $("readBtn").disabled = !signedIn;
+  $("backupBtn").disabled = !signedIn || questions.length === 0;
+  $("writeBtn").disabled = !isAdmin() || !pendingQuestions;
+}
+
+function getQuestionRef() {
   const collection = $("collection").value.trim();
   const documentId = $("documentId").value.trim();
 
@@ -201,23 +291,30 @@ function questionRef() {
 }
 
 function normalizeQuestion(item, index) {
-  // Old 11-column format:
-  // [set,section,question,passage,image,audio,answer,A,B,C,D]
   if (Array.isArray(item)) {
     if (item.length !== 11) {
-      throw new Error(`Question ${index + 1}: 11 वटा values चाहिन्छ।`);
+      throw new Error(
+        `Question ${index + 1}: 11 वटा values हुनुपर्छ।`
+      );
     }
 
     item = {
-      set: item[0], section: item[1], question: item[2],
-      passage: item[3], image: item[4], audio: item[5],
-      answer: item[6], A: item[7], B: item[8],
-      C: item[9], D: item[10]
+      set: item[0],
+      section: item[1],
+      question: item[2],
+      passage: item[3],
+      image: item[4],
+      audio: item[5],
+      answer: item[6],
+      A: item[7],
+      B: item[8],
+      C: item[9],
+      D: item[10]
     };
   }
 
   if (!item || typeof item !== "object") {
-    throw new Error(`Question ${index + 1}: गलत format।`);
+    throw new Error(`Question ${index + 1}: Invalid format.`);
   }
 
   const q = {
@@ -235,15 +332,15 @@ function normalizeQuestion(item, index) {
   };
 
   if (!Number.isInteger(q.set) || q.set < 1) {
-    throw new Error(`Question ${index + 1}: set number गलत छ।`);
+    throw new Error(`Question ${index + 1}: Set number गलत छ।`);
   }
 
   if (!["sv", "ce", "lc", "rc"].includes(q.section)) {
-    throw new Error(`Question ${index + 1}: section sv/ce/lc/rc हुनुपर्छ।`);
+    throw new Error(`Question ${index + 1}: section गलत छ।`);
   }
 
   if (!q.question.trim()) {
-    throw new Error(`Question ${index + 1}: question खाली छ।`);
+    throw new Error(`Question ${index + 1}: प्रश्न खाली छ।`);
   }
 
   if (!["A", "B", "C", "D"].includes(q.answer)) {
@@ -252,22 +349,22 @@ function normalizeQuestion(item, index) {
 
   for (const key of ["A", "B", "C", "D"]) {
     if (!q[key].trim()) {
-      throw new Error(`Question ${index + 1}: option ${key} खाली छ।`);
+      throw new Error(`Question ${index + 1}: Option ${key} खाली छ।`);
     }
   }
 
   return q;
 }
 
-function parseQuestionJSON(raw) {
+function parseQuestions(raw) {
   const parsed = JSON.parse(raw);
-  const arr = Array.isArray(parsed) ? parsed : parsed.questions;
+  const list = Array.isArray(parsed) ? parsed : parsed.questions;
 
-  if (!Array.isArray(arr) || arr.length === 0) {
-    throw new Error('JSON मा non-empty "questions" array चाहिन्छ।');
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error('JSON मा non-empty "questions" array हुनुपर्छ।');
   }
 
-  return arr.map(normalizeQuestion);
+  return list.map(normalizeQuestion);
 }
 
 function renderQuestions(list) {
@@ -277,32 +374,33 @@ function renderQuestions(list) {
   const counts = { sv: 0, ce: 0, lc: 0, rc: 0 };
   list.forEach(q => counts[q.section]++);
 
-  const labels = {
+  for (const text of [
+    `Total: ${list.length}`,
+    `SV: ${counts.sv}`,
+    `CE: ${counts.ce}`,
+    `LC: ${counts.lc}`,
+    `RC: ${counts.rc}`
+  ]) {
+    const el = document.createElement("div");
+    el.className = "stat";
+    el.textContent = text;
+    $("stats").appendChild(el);
+  }
+
+  const sectionNames = {
     sv: "Script & Vocabulary",
     ce: "Conversation & Expression",
     lc: "Listening Comprehension",
     rc: "Reading Comprehension"
   };
 
-  const stats = [
-    `Total: ${list.length}`,
-    `SV: ${counts.sv}`, `CE: ${counts.ce}`,
-    `LC: ${counts.lc}`, `RC: ${counts.rc}`
-  ];
-
-  stats.forEach(value => {
-    const el = document.createElement("div");
-    el.className = "stat";
-    el.textContent = value;
-    $("stats").appendChild(el);
-  });
-
-  list.slice(0, 100).forEach((q, i) => {
+  list.slice(0, 100).forEach((q, index) => {
     const box = document.createElement("div");
     box.className = "q";
 
     const title = document.createElement("h3");
-    title.textContent = `${i + 1}. Set ${q.set} — ${labels[q.section]}`;
+    title.textContent =
+      `${index + 1}. Set ${q.set} — ${sectionNames[q.section]}`;
 
     const question = document.createElement("p");
     question.textContent = q.question;
@@ -311,21 +409,23 @@ function renderQuestions(list) {
     passage.textContent = q.passage ? "Passage: " + q.passage : "";
 
     const options = document.createElement("p");
-    options.textContent = `A. ${q.A} | B. ${q.B} | C. ${q.C} | D. ${q.D}`;
+    options.textContent =
+      `A. ${q.A} | B. ${q.B} | C. ${q.C} | D. ${q.D}`;
 
     const answer = document.createElement("p");
-    answer.textContent = "Correct answer: " + q.answer;
+    answer.textContent = "Answer: " + q.answer;
 
     box.append(title, question, passage, options, answer);
 
     if (q.image) {
       const p = document.createElement("p");
-      p.textContent = "Image URL: " + q.image;
+      p.textContent = "Image: " + q.image;
       box.appendChild(p);
     }
+
     if (q.audio) {
       const p = document.createElement("p");
-      p.textContent = "Audio URL: " + q.audio;
+      p.textContent = "Audio: " + q.audio;
       box.appendChild(p);
     }
 
@@ -340,115 +440,143 @@ function renderQuestions(list) {
   }
 }
 
-function refreshButtons() {
-  const loggedIn = Boolean(currentUser);
-  $("loginBtn").classList.toggle("hidden", loggedIn);
-  $("logoutBtn").classList.toggle("hidden", !loggedIn);
-  $("readBtn").disabled = !loggedIn;
-  $("backupBtn").disabled = !loggedIn || !questions.length;
+/* GOOGLE LOGIN
+   Popup first. If the browser blocks popups, offer redirect. */
+$("loginBtn").addEventListener("click", async () => {
+  $("loginBtn").disabled = true;
+  show("authStatus", "Google login खोलिँदैछ...");
 
-  const isAdmin = loggedIn &&
-    currentUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() &&
-    currentUser.emailVerified;
+  try {
+    const result = await signInWithPopup(auth, provider);
+    show("authStatus", "Login सफल: " + result.user.email, "ok");
+  } catch (error) {
+    if (
+      error.code === "auth/popup-blocked" ||
+      error.code === "auth/operation-not-supported-in-this-environment"
+    ) {
+      const useRedirect = confirm(
+        "Popup चल्न सकेन। Redirect login प्रयोग गर्ने?"
+      );
 
-  $("writeBtn").disabled = !isAdmin || !pendingQuestions;
-}
+      if (useRedirect) {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectError) {
+          show("authStatus", explainError(redirectError), "err");
+        }
+      } else {
+        show("authStatus", explainError(error), "err");
+      }
+    } else {
+      show("authStatus", explainError(error), "err");
+    }
+  }
 
-// Handle redirect errors on page return
+  updateButtons();
+});
+
+/* Handle redirect result if redirect login was used */
 try {
   await getRedirectResult(auth);
 } catch (error) {
-  loginError = `${error.code || "Login error"}: ${error.message}`;
-  showStatus("authStatus", loginError, "err");
+  show("authStatus", explainError(error), "err");
 }
 
+/* LOGIN STATE + PROFILE WRITE */
 onAuthStateChanged(auth, async user => {
   currentUser = user;
-  refreshButtons();
+  authReady = true;
+  updateButtons();
 
   if (!user) {
-    if (!loginError) {
-      showStatus("authStatus", "Login गर्न Continue with Google थिच्नुहोस्।");
-    }
+    show("authStatus", "Login गर्न Continue with Google थिच्नुहोस्।");
     return;
   }
 
-  try {
-    // Save the signed-in user's profile in Firestore.
-    // Security Rules must allow users to write their own UID document.
-    await setDoc(doc(db, "users", user.uid), {
-      uid: user.uid,
-      email: user.email || "",
-      displayName: user.displayName || "",
-      photoURL: user.photoURL || "",
-      emailVerified: Boolean(user.emailVerified),
-      lastLoginAt: serverTimestamp()
-    }, { merge: true });
+  show("authStatus", "Login सफल। User profile save हुँदैछ...");
 
-    showStatus(
+  try {
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "",
+        photoURL: user.photoURL || "",
+        emailVerified: !!user.emailVerified,
+        lastLoginAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    show(
       "authStatus",
-      `Login successful\nEmail: ${user.email}\nUID: ${user.uid}\nProfile saved to users/${user.uid}`,
+      `LOGIN SUCCESSFUL\nEmail: ${user.email}\nProfile: users/${user.uid}\nAdmin write access: ${isAdmin() ? "Yes" : "No"}`,
       "ok"
     );
   } catch (error) {
-    showStatus(
+    show(
       "authStatus",
-      `Google login भएको छ, तर Firestore profile save भएन.\n${error.code || ""}: ${error.message}`,
+      `Google login सफल भयो तर Firestore profile save भएन।\n${explainError(error)}`,
       "err"
     );
   }
 
-  refreshButtons();
+  updateButtons();
 });
 
-// Google login — redirect works better on many mobile browsers
-$("loginBtn").addEventListener("click", async () => {
-  loginError = "";
-  try {
-    await signInWithRedirect(auth, provider);
-  } catch (error) {
-    showStatus("authStatus", `${error.code || ""}: ${error.message}`, "err");
-  }
-});
-
+/* LOGOUT */
 $("logoutBtn").addEventListener("click", async () => {
   try {
     await signOut(auth);
-    showStatus("authStatus", "Logout भयो।");
+    show("authStatus", "Logout सफल भयो।");
   } catch (error) {
-    showStatus("authStatus", error.message, "err");
+    show("authStatus", explainError(error), "err");
   }
 });
 
-// Read question document
+/* READ QUESTIONS */
 $("readBtn").addEventListener("click", async () => {
   try {
-    showStatus("readStatus", "Firebase बाट पढिँदैछ...");
-    const snap = await getDoc(questionRef());
+    show("readStatus", "Firebase बाट प्रश्न पढिँदैछ...");
 
-    if (!snap.exists()) {
+    const snapshot = await getDoc(getQuestionRef());
+
+    if (!snapshot.exists()) {
       questions = [];
       renderQuestions([]);
-      showStatus("readStatus", "Document भेटिएन। Collection र Document ID जाँच्नुहोस्।", "err");
-      refreshButtons();
+      show(
+        "readStatus",
+        "Document भेटिएन। Collection र Document ID जाँच्नुहोस्।",
+        "err"
+      );
+      updateButtons();
       return;
     }
 
-    const data = snap.data();
+    const data = snapshot.data();
+
     if (!Array.isArray(data.questions)) {
-      throw new Error("यो document मा questions array छैन।");
+      throw new Error("Document मा questions array छैन।");
     }
 
     questions = data.questions.map(normalizeQuestion);
     renderQuestions(questions);
-    showStatus("readStatus", `${questions.length} प्रश्न सफलतापूर्वक Read भए।`, "ok");
-    refreshButtons();
+
+    show(
+      "readStatus",
+      `${questions.length} प्रश्न सफलतापूर्वक Read भए।`,
+      "ok"
+    );
   } catch (error) {
-    showStatus("readStatus", `${error.code || ""}: ${error.message}`, "err");
+    show("readStatus", explainError(error), "err");
   }
+
+  updateButtons();
 });
 
-// Load JSON file
+/* LOAD JSON FILE */
 $("jsonFile").addEventListener("change", async event => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -456,54 +584,48 @@ $("jsonFile").addEventListener("change", async event => {
   try {
     $("jsonInput").value = await file.text();
     pendingQuestions = null;
-    refreshButtons();
-    showStatus("writeStatus", "JSON load भयो। अब Validate JSON थिच्नुहोस्।");
+    updateButtons();
+    show("writeStatus", "JSON load भयो। अब Validate JSON थिच्नुहोस्।");
   } catch (error) {
-    showStatus("writeStatus", error.message, "err");
+    show("writeStatus", error.message, "err");
   }
 });
 
-// Validate before writing
+/* VALIDATE JSON */
 $("validateBtn").addEventListener("click", () => {
   try {
-    pendingQuestions = parseQuestionJSON($("jsonInput").value);
+    pendingQuestions = parseQuestions($("jsonInput").value);
     renderQuestions(pendingQuestions);
-    showStatus(
+
+    show(
       "writeStatus",
-      `${pendingQuestions.length} प्रश्न valid छन्। Write गर्न सक्नुहुन्छ।`,
+      `${pendingQuestions.length} प्रश्न valid छन्।`,
       "ok"
     );
-    refreshButtons();
   } catch (error) {
     pendingQuestions = null;
-    refreshButtons();
-    showStatus("writeStatus", `${error.message}`, "err");
+    show("writeStatus", error.message, "err");
   }
+
+  updateButtons();
 });
 
-// Write question data; admin permission is enforced by Firestore Rules
+/* WRITE QUESTIONS — FIRESTORE RULES ALSO ENFORCE ADMIN */
 $("writeBtn").addEventListener("click", async () => {
-  if (!currentUser || !pendingQuestions) return;
-
-  const isAdmin =
-    currentUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() &&
-    currentUser.emailVerified;
-
-  if (!isAdmin) {
-    showStatus("writeStatus", "यो Google account लाई प्रश्न Write गर्ने अनुमति छैन।", "err");
+  if (!isAdmin() || !pendingQuestions) {
+    show("writeStatus", "Verified admin account आवश्यक छ।", "err");
     return;
   }
 
-  const yes = confirm(
+  if (!confirm(
     `${pendingQuestions.length} प्रश्न save गर्ने?\n` +
-    "यो document को पुरानो data replace हुनेछ। पहिले backup लिनुहोस्।"
-  );
-  if (!yes) return;
+    "यो document को पुरानो data replace हुनेछ।"
+  )) return;
 
   $("writeBtn").disabled = true;
 
   try {
-    await setDoc(questionRef(), {
+    await setDoc(getQuestionRef(), {
       questions: pendingQuestions,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
@@ -511,16 +633,17 @@ $("writeBtn").addEventListener("click", async () => {
 
     questions = pendingQuestions;
     renderQuestions(questions);
-    showStatus("writeStatus", `${questions.length} प्रश्न Firestore मा save भए।`, "ok");
-    showStatus("readStatus", "Latest questions save भयो।", "ok");
+
+    show("writeStatus", `${questions.length} प्रश्न save भए।`, "ok");
+    show("readStatus", "Latest data Firebase मा save भयो।", "ok");
   } catch (error) {
-    showStatus("writeStatus", `${error.code || ""}: ${error.message}`, "err");
-  } finally {
-    refreshButtons();
+    show("writeStatus", explainError(error), "err");
   }
+
+  updateButtons();
 });
 
-// Download currently read questions as JSON backup
+/* DOWNLOAD BACKUP */
 $("backupBtn").addEventListener("click", () => {
   if (!currentUser || !questions.length) return;
 
@@ -530,10 +653,10 @@ $("backupBtn").addEventListener("click", () => {
   );
 
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "dream-japan-questions-backup.json";
-  link.click();
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dream-japan-questions-backup.json";
+  a.click();
   URL.revokeObjectURL(url);
 });
 </script>
