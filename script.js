@@ -1,6 +1,6 @@
 /* ============================================================
    Dream Japan — JFT Mock Test (3-file SPA)
-   v1.1.0 — Part 1 bug fixes
+   v1.2.0 — Part 1 bugs + back button + fast load + Firestore opt
    ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -26,8 +26,15 @@ const FIREBASE_CONFIG = {
 const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
 const REPO_BASE = "https://raw.githubusercontent.com/deepakrajpant/photo/main/";
 const QUESTIONS_DOC = "jftoctnovset/QORwII8D7qLZ7wuCDW36";
-const CACHE_KEY = "dj_q_cache_v4";
-const CACHE_TTL = 30 * 60 * 1000;
+const CACHE_KEY = "dj_q_cache_v5";               // v5: localStorage + 60min
+const CACHE_TTL = 60 * 60 * 1000;                // was 30 min
+const PLANS_CACHE_KEY = "dj_plans_v1";
+const PLANS_TTL = 24 * 60 * 60 * 1000;           // 24h
+const PROFILE_CACHE_KEY = "dj_profile_v1";
+const PROFILE_TTL = 24 * 60 * 60 * 1000;
+const RESULTS_CACHE_KEY = "dj_results_v1";
+const RESULTS_TTL = 60 * 60 * 1000;
+const LAST_LOGIN_KEY = "dj_last_login_update";
 const EXAM_MIN = 60;
 const MAX_PLAYS = 2;
 const PASS_PCT = 0.8;
@@ -52,8 +59,6 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
-
-// FIX #5 — stable per-tab identifier for exam lock
 const TAB_ID = `tab_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
 /* ============ STATE ============ */
@@ -66,11 +71,11 @@ const state = {
   _userSub: null, _tick: null, _audio: null,
   _perfStart: 0, _perfLeftAtStart: 0, _timeupShown: false, _lockTick: null,
   _allStudents: null, _allQs: null,
+  _confirmedLeave: false,        // leave-exam flow
   totalQ: 52, fullMarks: 250, passMarks: 200
 };
-
-// FIX #2 — prevents double popstate handling
 let _backHandling = false;
+let _lastHandledHash = location.hash;
 
 /* ============ UTILS ============ */
 const $ = id => document.getElementById(id);
@@ -132,13 +137,55 @@ function sceneData(kind) {
 }
 const LOGO_SVG = `<svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>`;
 
-/* ============ EXAM LOCK (FIX #5) ============ */
+/* ============ LOCALSTORAGE CACHES (new) ============ */
+function saveProfileCache(uid, profile) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ uid, profile, ts: Date.now() })); } catch {}
+}
+function loadProfileCache(uid) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c || c.uid !== uid) return null;
+    if (Date.now() - c.ts > PROFILE_TTL) return null;
+    return c.profile;
+  } catch { return null; }
+}
+function clearProfileCache() { try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {} }
+
+function savePlansCache(plans) {
+  try { localStorage.setItem(PLANS_CACHE_KEY, JSON.stringify({ ts: Date.now(), plans })); } catch {}
+}
+function loadPlansCache() {
+  try {
+    const raw = localStorage.getItem(PLANS_CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c || Date.now() - c.ts > PLANS_TTL) return null;
+    return c.plans;
+  } catch { return null; }
+}
+
+function saveResultsCache(uid, results) {
+  try { localStorage.setItem(`${RESULTS_CACHE_KEY}_${uid}`, JSON.stringify({ ts: Date.now(), results })); } catch {}
+}
+function loadResultsCache(uid) {
+  try {
+    const raw = localStorage.getItem(`${RESULTS_CACHE_KEY}_${uid}`);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c || Date.now() - c.ts > RESULTS_TTL) return null;
+    return c.results;
+  } catch { return null; }
+}
+function invalidateResultsCache(uid) {
+  try { localStorage.removeItem(`${RESULTS_CACHE_KEY}_${uid}`); } catch {}
+}
+
+/* ============ EXAM LOCK ============ */
 function examLockKey(setIdx) { return `dj_exam_lock_${setIdx}`; }
 function readExamLock(setIdx) {
-  try {
-    const raw = localStorage.getItem(examLockKey(setIdx));
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  try { const raw = localStorage.getItem(examLockKey(setIdx)); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 function isExamLockedByOther(setIdx) {
   const lock = readExamLock(setIdx);
@@ -146,28 +193,73 @@ function isExamLockedByOther(setIdx) {
   return lock.tab !== TAB_ID && (Date.now() - lock.ts) < 90000;
 }
 function acquireExamLock(setIdx) {
-  try {
-    localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID }));
-  } catch {}
+  try { localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID })); } catch {}
 }
 function refreshExamLock(setIdx) {
-  try {
-    localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID }));
-  } catch {}
+  try { localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID })); } catch {}
 }
 function releaseExamLock(setIdx) {
-  try {
-    const lock = readExamLock(setIdx);
-    if (lock && lock.tab === TAB_ID) localStorage.removeItem(examLockKey(setIdx));
-  } catch {}
+  try { const lock = readExamLock(setIdx); if (lock && lock.tab === TAB_ID) localStorage.removeItem(examLockKey(setIdx)); } catch {}
 }
 
-/* ============ ROUTER ============ */
-// FIX #2 — single pushState per navigation; FIX #4 — stopAudio on every navigation
+/* ============ HISTORY / ROUTER ============ */
+/**
+ * App-like history:
+ *   - Home is at position 0 (seeded once)
+ *   - Non-home screens at position 1 (push on leave-home, replace between non-home)
+ *   - Back from any non-home → home (popstate)
+ *   - Back from home → exits browser (native)
+ *   - Exam back → intercepted → leave-modal → back again → home
+ */
+function initHistory() {
+  const { screen, params } = parseHash();
+  if (!screen || screen === "home" || screen === "login" || screen === "signup") {
+    history.replaceState({ screen: "home", params: {} }, "", location.hash || "#/home");
+  } else {
+    history.replaceState({ screen: "home", params: {} }, "", "#/home");
+    const search = new URLSearchParams(params).toString();
+    const hash = "#/" + screen + (search ? "?" + search : "");
+    history.pushState({ screen, params }, "", hash);
+  }
+  _lastHandledHash = location.hash;
+}
+
+function parseHash() {
+  const raw = location.hash || "#/home";
+  const [screen, qs] = raw.slice(2).split("?");
+  const params = {};
+  if (qs) new URLSearchParams(qs).forEach((v, k) => params[k] = v);
+  return { screen: screen || "home", params };
+}
+
 function navigate(screen, params = {}) {
   const search = new URLSearchParams(params).toString();
   const hash = "#/" + screen + (search ? "?" + search : "");
-  if (location.hash !== hash) history.pushState({ screen, params }, "", hash);
+
+  // Both home → no-op
+  if (screen === "home" && state.screen === "home") {
+    if (location.hash !== "#/home") history.replaceState({ screen: "home", params: {} }, "", "#/home");
+    return;
+  }
+
+  // Non-home → home: use history.back() for clean exit-from-home next press
+  if (screen === "home" && state.screen !== "home") {
+    if (location.hash === hash) {
+      // Already at #/home — just render
+      state.screen = "home"; state.params = {};
+      stopAudio(); render(); window.scrollTo(0, 0);
+      return;
+    }
+    history.back();
+    return;
+  }
+
+  // Home → non-home: push. Non-home → non-home: replace.
+  if (state.screen === "home" || !state.screen) {
+    history.pushState({ screen, params }, "", hash);
+  } else {
+    history.replaceState({ screen, params }, "", hash);
+  }
   state.screen = screen;
   state.params = params;
   stopAudio();
@@ -175,7 +267,7 @@ function navigate(screen, params = {}) {
   window.scrollTo(0, 0);
 }
 
-// FIX #2 — replace current history entry (used when leaving/completing exam)
+// Replace without affecting stack depth (used when clearing exam to leave)
 function replaceNavigate(screen, params = {}) {
   const search = new URLSearchParams(params).toString();
   const hash = "#/" + screen + (search ? "?" + search : "");
@@ -187,36 +279,60 @@ function replaceNavigate(screen, params = {}) {
   window.scrollTo(0, 0);
 }
 
-function parseHash() {
-  const raw = location.hash || "#/home";
-  const [screen, qs] = raw.slice(2).split("?");
-  const params = {};
-  if (qs) new URLSearchParams(qs).forEach((v, k) => params[k] = v);
-  return { screen: screen || "home", params };
-}
-
-// FIX #2 — single popstate; guarded against rapid double-fire
-window.addEventListener("popstate", () => {
-  if (state.screen === "exam" && state.exam) {
+window.addEventListener("popstate", (e) => {
+  // Exam interceptor
+  if (state.screen === "exam" && state.exam && !state._confirmedLeave) {
     if (_backHandling) return;
     _backHandling = true;
     const search = new URLSearchParams(state.params || {}).toString();
     const hash = "#/exam" + (search ? "?" + search : "");
     history.pushState({ screen: "exam", params: state.params }, "", hash);
+    _lastHandledHash = hash;
     askLeaveExam();
-    setTimeout(() => { _backHandling = false; }, 500);
+    setTimeout(() => { _backHandling = false; }, 400);
+    return;
+  }
+
+  // Confirmed leave flow
+  if (state._confirmedLeave) {
+    state._confirmedLeave = false;
+    const savedSetIdx = state.exam?.setIdx;
+    state.exam = null;
+    clearExamState();
+    if (state._tick) { clearInterval(state._tick); state._tick = null; }
+    if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
+    if (savedSetIdx !== undefined) releaseExamLock(savedSetIdx);
+  }
+
+  const { screen, params } = parseHash();
+  state.screen = screen || "home";
+  state.params = params;
+  _lastHandledHash = location.hash;
+  stopAudio();
+  render();
+});
+
+// Defensive: handle typed-in URLs / external hash links
+window.addEventListener("hashchange", () => {
+  if (location.hash === _lastHandledHash) return;
+  _lastHandledHash = location.hash;
+  if (state.screen === "exam" && state.exam) {
+    // Don't allow URL typing to silently leave an active exam
+    const search = new URLSearchParams(state.params || {}).toString();
+    const hash = "#/exam" + (search ? "?" + search : "");
+    history.replaceState({ screen: "exam", params: state.params }, "", hash);
+    _lastHandledHash = hash;
     return;
   }
   const { screen, params } = parseHash();
+  if (screen === state.screen && JSON.stringify(params) === JSON.stringify(state.params)) return;
   state.screen = screen;
   state.params = params;
   stopAudio();
   render();
 });
-// FIX #2 — removed hashchange listener (pushState doesn't fire it; nothing else uses it)
 
 /* ============ AUTH ============ */
-// FIX #9 — persist return hash before redirect
 async function signInGoogle() {
   try { await signInWithPopup(auth, provider); }
   catch (e) {
@@ -225,8 +341,7 @@ async function signInGoogle() {
       try {
         sessionStorage.setItem(REDIRECT_AFTER_KEY, location.hash || "#/home");
         await signInWithRedirect(auth, provider);
-      }
-      catch (re) { toast(re.message, "err"); }
+      } catch (re) { toast(re.message, "err"); }
     } else { toast("Login failed: " + (e.code || e.message), "err"); }
   }
 }
@@ -273,17 +388,25 @@ async function resetPassword(email) {
 async function logout() {
   if (state._userSub) { state._userSub(); state._userSub = null; }
   if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
+  if (state._tick) { clearInterval(state._tick); state._tick = null; }
   stopAudio();
+  clearProfileCache();
+  if (state.user) invalidateResultsCache(state.user.uid);
+  try { localStorage.removeItem(LAST_LOGIN_KEY); } catch {}
   await signOut(auth);
 }
 
-async function ensureUserProfile(user) {
-  const ref = doc(db, "users", user.uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    await updateDoc(ref, { lastLogin: serverTimestamp() }).catch(() => {});
-    return { uid: user.uid, ...snap.data() };
-  }
+// FIX: throttle lastLogin writes to once per hour
+async function touchLastLogin(uid) {
+  try {
+    const last = +localStorage.getItem(LAST_LOGIN_KEY) || 0;
+    if (Date.now() - last < 60 * 60 * 1000) return;
+    await updateDoc(doc(db, "users", uid), { lastLogin: serverTimestamp() });
+    localStorage.setItem(LAST_LOGIN_KEY, String(Date.now()));
+  } catch {}
+}
+
+async function createNewProfile(user) {
   const isAdmin = user.email === ADMIN_EMAIL;
   const profile = {
     name: user.displayName || (user.email || "").split("@")[0],
@@ -294,8 +417,33 @@ async function ensureUserProfile(user) {
     streak: { count: 0, last: null }, bestScore: 0,
     createdAt: serverTimestamp(), lastLogin: serverTimestamp()
   };
-  try { await setDoc(ref, profile); } catch (e) { console.warn("Profile create:", e.code); }
+  try {
+    await setDoc(doc(db, "users", user.uid), profile);
+    localStorage.setItem(LAST_LOGIN_KEY, String(Date.now()));
+  } catch (e) { console.warn("Profile create:", e.code); }
   return { uid: user.uid, ...profile };
+}
+
+// NO cache → getDoc; has cache → return cache (background refresh handled elsewhere)
+async function ensureUserProfile(user) {
+  const ref = doc(db, "users", user.uid);
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const profile = { uid: user.uid, ...snap.data() };
+      saveProfileCache(user.uid, profile);
+      touchLastLogin(user.uid); // background, throttled
+      return profile;
+    }
+    const fresh = await createNewProfile(user);
+    saveProfileCache(user.uid, fresh);
+    return fresh;
+  } catch (e) {
+    // Offline or network error — fall back to cache if present
+    const cached = loadProfileCache(user.uid);
+    if (cached) return cached;
+    throw e;
+  }
 }
 
 /* ============ DATA ============ */
@@ -321,19 +469,25 @@ function normalizeRow(r) {
     C: String(r.C || "").trim(), D: String(r.D || "").trim()
   };
 }
+
+// NEW: localStorage instead of sessionStorage
 function getCache() {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
-    if (!c || c.v !== 4 || !Array.isArray(c.rows)) return null;
+    if (!c || c.v !== 5 || !Array.isArray(c.rows)) return null;
+    if (Date.now() - c.ts > CACHE_TTL) return null;
     return c;
   } catch { return null; }
 }
 function setCache(rows) {
-  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ v: 4, ts: Date.now(), rows })); } catch {}
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ v: 5, ts: Date.now(), rows })); } catch {}
 }
-function clearQCache() { try { sessionStorage.removeItem(CACHE_KEY); } catch {} }
+function clearQCache() {
+  try { localStorage.removeItem(CACHE_KEY); } catch {}
+  try { sessionStorage.removeItem("dj_q_cache_v4"); } catch {}
+}
 
 async function fetchQuestionsFromFirestore() {
   const snap = await getDoc(doc(db, QUESTIONS_DOC));
@@ -348,9 +502,7 @@ async function fetchQuestionsFromFirestore() {
 }
 async function loadQuestions(force = false) {
   const cached = getCache();
-  if (!force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
-    return { rows: cached.rows, fromCache: true };
-  }
+  if (!force && cached) return { rows: cached.rows, fromCache: true };
   try {
     const rows = await fetchQuestionsFromFirestore();
     setCache(rows);
@@ -398,8 +550,14 @@ async function loadResults(uid) {
     const snap = await getDocs(q);
     const out = [];
     snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+    saveResultsCache(uid, out);
     return out;
-  } catch { return []; }
+  } catch { return loadResultsCache(uid) || []; }
+}
+async function loadResultsCached(uid) {
+  const cached = loadResultsCache(uid);
+  if (cached) return cached;
+  return await loadResults(uid);
 }
 async function loadPlans() {
   try {
@@ -415,10 +573,17 @@ async function loadPlans() {
           benefits:["Everything in 15-day","Priority support","Section-wise analytics","Leaderboard eligibility","PDF result export"] }
       ];
       for (const p of defs) try { await setDoc(doc(db, "plans", p.id), p); } catch {}
+      savePlansCache(defs);
       return defs;
     }
+    savePlansCache(plans);
     return plans;
-  } catch { return []; }
+  } catch { return loadPlansCache() || []; }
+}
+async function loadPlansCached() {
+  const cached = loadPlansCache();
+  if (cached) return cached;
+  return await loadPlans();
 }
 async function loadLeaderboard() {
   try {
@@ -450,6 +615,7 @@ async function bumpStreak() {
   try {
     await updateDoc(doc(db, "users", state.user.uid), { streak: { count: newCount, last: now.toISOString() } });
     if (state.profile) state.profile.streak = { count: newCount, last: now.toISOString() };
+    saveProfileCache(state.user.uid, state.profile);
   } catch {}
 }
 async function requestAccess() {
@@ -487,12 +653,12 @@ async function toggleBookmark(setIdx, secKey, qi) {
   try {
     await updateDoc(doc(db, "users", state.user.uid), { bookmarks: bms });
     state.profile.bookmarks = bms;
+    saveProfileCache(state.user.uid, state.profile);
     toast(idx >= 0 ? "Bookmark removed" : "Bookmarked ✓", "ok");
   } catch (e) { toast("Failed: " + e.message, "err"); }
 }
 
 /* ============ EXAM STATE PERSIST ============ */
-// FIX #10 — persist `locked` state so refresh keeps previous sections locked
 function saveExamState(ex) {
   try {
     sessionStorage.setItem(EXAM_STATE_KEY, JSON.stringify({
@@ -505,10 +671,7 @@ function saveExamState(ex) {
   } catch {}
 }
 function loadExamState() {
-  try {
-    const raw = sessionStorage.getItem(EXAM_STATE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  try { const raw = sessionStorage.getItem(EXAM_STATE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 function clearExamState() { try { sessionStorage.removeItem(EXAM_STATE_KEY); } catch {} }
 function saveResult(res) { try { sessionStorage.setItem(RESULT_KEY, JSON.stringify(res)); } catch {} }
@@ -523,15 +686,11 @@ function render() {
   const s = state.screen;
   let html = "";
 
-  // FIX #8 — never render any authed screen (or nav) when user is null
   if (!state.user) {
     if (s === "signup") html = renderSignup();
     else html = renderLogin();
-  } else if (s === "loading") {
-    html = renderLoading();
-  } else if (s === "login" || s === "signup") {
-    html = renderHomeScreen();
-  } else if (s === "home") html = renderHomeScreen();
+  } else if (s === "loading") html = renderLoading();
+  else if (s === "login" || s === "signup" || s === "home") html = renderHomeScreen();
   else if (s === "sets") html = renderSets();
   else if (s === "start") html = renderStart();
   else if (s === "exam") html = renderExam();
@@ -563,7 +722,6 @@ function topbarHTML() {
       <span>${esc(p.name || state.user.email)}</span></button>
   </div></div>`;
 }
-// FIX #8 — explicit guard
 function bottomNavHTML(active) {
   if (!state.user) return "";
   const items = [
@@ -685,6 +843,16 @@ function renderHomeScreen() {
 }
 
 function renderSets() {
+  if (!state.sets.length) {
+    return `${topbarHTML()}<div class="wrap" style="padding:16px 0 80px">
+      <button class="btn btn-ghost btn-sm mb-2" data-go="home">← Back</button>
+      <h2 class="mb-2">Choose a Set</h2>
+      <div class="card center" style="padding:40px 20px">
+        <div class="spinner" style="margin:0 auto 12px"></div>
+        <p class="muted">Loading questions…</p>
+      </div>
+    </div>${bottomNavHTML("sets")}`;
+  }
   return `${topbarHTML()}<div class="wrap" style="padding-top:16px;padding-bottom:80px">
     <button class="btn btn-ghost btn-sm mb-2" data-go="home">← Back</button>
     <h2 class="mb-2">Choose a Set</h2>
@@ -763,7 +931,6 @@ function renderExam() {
       setTimeout(() => resumeExamFromSaved(saved), 0);
       return renderLoading();
     }
-    // FIX #2 — use replaceNavigate to avoid history loop
     setTimeout(() => replaceNavigate("sets"), 10);
     return renderLoading();
   }
@@ -803,7 +970,6 @@ function renderExam() {
       `<div class="step ${i === ex.si ? "cur" : i < ex.si ? "done" : ""}">${s.short}</div>`).join("")}</div>
     <div class="progress-bar"><i id="progressFill" style="width:${(ex.answeredCount / sec.questions.length) * 100}%"></i></div>
     <div class="palette">${sec.questions.map((qq, i) => {
-      // FIX #10 — disable palette for locked OR unreachable questions
       const disabled = i > ex.maxReachable || qq.locked;
       return `<button class="pal-btn ${qq.sel !== undefined ? "ans" : ""} ${i === ex.qi ? "cur" : ""}"
         ${disabled ? "disabled" : ""} data-jump="${i}">${i + 1}</button>`;
@@ -1249,6 +1415,7 @@ function postRender() {
       try {
         await updateDoc(doc(db, "users", state.user.uid), { bookmarks: bms });
         state.profile.bookmarks = bms;
+        saveProfileCache(state.user.uid, state.profile);
         render();
         toast("Removed", "ok");
       } catch (e) { toast("Failed: " + e.message, "err"); }
@@ -1259,7 +1426,6 @@ function postRender() {
 }
 
 /* ============ EXAM ENGINE ============ */
-// FIX #5 — warn if another tab has this set locked
 async function beginExam(setIdx, force = false) {
   const set = state.sets[setIdx];
   if (!set) return navigate("sets");
@@ -1287,7 +1453,6 @@ async function beginExam(setIdx, force = false) {
   navigate("exam");
 }
 
-// FIX #10 — restore locked flags from saved state
 function resumeExamFromSaved(saved) {
   const set = state.sets[saved.setIdx];
   if (!set) { clearExamState(); replaceNavigate("sets"); return; }
@@ -1314,8 +1479,6 @@ function resumeExamFromSaved(saved) {
   render();
 }
 
-// FIX #1 — performance.now() for drift-free timing
-// FIX #5 — refresh lock every 15 sec while exam active
 function startTimer() {
   if (state._tick) clearInterval(state._tick);
   if (state._lockTick) clearInterval(state._lockTick);
@@ -1329,7 +1492,6 @@ function startTimer() {
   refreshExamLock(state.exam.setIdx);
 }
 
-// FIX #1 — derive remaining from performance clock (immune to setInterval drift)
 function tick() {
   const ex = state.exam;
   if (!ex) { clearInterval(state._tick); return; }
@@ -1392,7 +1554,6 @@ function selectOpt(i) {
   saveExamState(ex);
 }
 
-// FIX #10 — block jumping to locked or out-of-range questions
 function jumpTo(i) {
   const ex = state.exam;
   if (!ex) return;
@@ -1449,8 +1610,6 @@ function finishSection() {
     ]);
 }
 
-// FIX #2 — replace history entry on leave (no history loop)
-// FIX #5 — release lock on leave
 function askLeaveExam() {
   if (!state.exam) return;
   state.exam.paused = true;
@@ -1459,20 +1618,12 @@ function askLeaveExam() {
     [
       { label: "Stay", cls: "btn-ghost", onClick: () => { if (state.exam) state.exam.paused = false; } },
       { label: "Leave", cls: "btn-danger", onClick: () => {
-        if (state._tick) clearInterval(state._tick);
-        if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
-        const setIdx = state.exam?.setIdx;
-        state.exam = null;
-        clearExamState();
-        if (setIdx !== undefined) releaseExamLock(setIdx);
-        replaceNavigate("sets");
+        state._confirmedLeave = true;
+        history.back();
       }}
     ]);
 }
 
-// FIX #3 — retry modal on offline submit
-// FIX #5 — release lock on submit
-// FIX #2 — replaceNavigate to avoid history loop
 async function finishExam() {
   if (state._tick) clearInterval(state._tick);
   if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
@@ -1508,9 +1659,10 @@ async function finishExam() {
     submittedAt: new Date().toISOString()
   };
 
-  // Always save locally first (so result is never lost)
   saveResult(result);
   clearExamState();
+  invalidateResultsCache(state.user.uid);   // force re-fetch next visit
+
   const setIdx = ex.setIdx;
   state.exam = null;
   releaseExamLock(setIdx);
@@ -1538,19 +1690,20 @@ async function finishExam() {
   }
 }
 
-// FIX #3 — helper that can be retried without creating duplicate attemptId
 async function saveResultToDb(result, attemptId) {
   if (!state.user) throw new Error("Not signed in");
   await setDoc(doc(db, "users", state.user.uid, "results", attemptId), {
     ...result, submittedAt: serverTimestamp()
   });
+  // Only write bestScore if improved (saves writes)
   if (result.percentage > (state.profile?.bestScore || 0)) {
     await updateDoc(doc(db, "users", state.user.uid), { bestScore: result.percentage });
     if (state.profile) state.profile.bestScore = result.percentage;
+    saveProfileCache(state.user.uid, state.profile);
   }
-  // Avoid duplicate in-memory entries on retry
   if (!state.results.some(r => r.id === attemptId)) {
     state.results.unshift({ ...result, id: attemptId });
+    saveResultsCache(state.user.uid, state.results);
   }
 }
 
@@ -1732,7 +1885,6 @@ function bindAdminTab() {
   if (adminTab === "requests") loadRequests();
   if (adminTab === "questions") {
     $("qSearch").oninput = filterQuestions;
-    // FIX #6 — pass null for "add new" instead of index -1
     $("addQBtn").onclick = () => openQEditor(null);
     $("refreshQ2").onclick = refreshQuestions;
     loadQs();
@@ -1855,7 +2007,6 @@ function filterQuestions() {
     (r.question || "").toLowerCase().includes(q) || (r.passage || "").toLowerCase().includes(q));
   renderQRows(rows);
 }
-// FIX #6 — pass row object to openQEditor (was passing filtered index)
 function renderQRows(rows) {
   const list = $("questionsList");
   if (!list) return;
@@ -1880,12 +2031,11 @@ function renderQRows(rows) {
     b.onclick = () => {
       const row = rows[+b.dataset.i];
       if (b.dataset.qact === "preview") previewQ(row);
-      else if (b.dataset.qact === "edit") openQEditor(row);  // FIX #6: pass row, not index
+      else if (b.dataset.qact === "edit") openQEditor(row);
       else if (b.dataset.qact === "del") deleteQ(row);
     };
   });
 }
-// FIX #6 — accepts row object (or null for "add new")
 function openQEditor(rowOrNull) {
   const isEdit = !!rowOrNull;
   const r = rowOrNull || { set:1, section:"sv", question:"", passage:"", image:"", audio:"", answer:"A", A:"", B:"", C:"", D:"" };
@@ -1916,7 +2066,6 @@ function openQEditor(rowOrNull) {
       { label: isEdit ? "Update" : "Add", cls: "btn-primary", onClick: () => saveQ(rowOrNull, isEdit) }
     ]);
 }
-// FIX #6 — signature changed to (origRow, isEdit)
 async function saveQ(origRow, isEdit) {
   const newRow = {
     set: +$("qeSet").value, section: $("qeSec").value,
@@ -2084,13 +2233,78 @@ async function rejectRequest(rid) {
 }
 
 /* ============ AUTH LISTENER & BOOT ============ */
+function renderWithBootTarget(screen, params) {
+  if (screen === "loading" || screen === "login" || screen === "signup") {
+    navigate(params.next || "home");
+  } else if (screen === "exam") {
+    const saved = loadExamState();
+    if (saved) {
+      state.screen = "exam";
+      resumeExamFromSaved(saved);
+    } else {
+      replaceNavigate("sets");
+    }
+  } else {
+    state.screen = screen;
+    state.params = params;
+    render();
+  }
+}
+
+function setupRealtimeProfile(user) {
+  if (state._userSub) state._userSub();
+  state._userSub = onSnapshot(doc(db, "users", user.uid), snap => {
+    if (!snap.exists()) return;
+    const fresh = { uid: user.uid, ...snap.data() };
+    const prev = state.profile;
+    state.profile = fresh;
+    state.isAdmin = (user.email === ADMIN_EMAIL && user.emailVerified) || fresh.role === "admin";
+    saveProfileCache(user.uid, fresh);
+    // Only re-render on meaningful changes
+    if (!prev) return;
+    const changed =
+      (prev.premium?.expiry?.seconds || prev.premium?.expiry || null) !== (fresh.premium?.expiry?.seconds || fresh.premium?.expiry || null) ||
+      prev.practiceAccess !== fresh.practiceAccess ||
+      prev.status !== fresh.status ||
+      prev.role !== fresh.role ||
+      (prev.bookmarks?.length || 0) !== (fresh.bookmarks?.length || 0) ||
+      prev.name !== fresh.name ||
+      prev.photoURL !== fresh.photoURL;
+    if (changed && !["exam", "practice", "result"].includes(state.screen)) {
+      render();
+    }
+  });
+}
+
+async function loadDataInBackground() {
+  // Questions — cached for 1h
+  try {
+    const qr = await loadQuestions();
+    state.sets = buildSets(qr.rows);
+    recomputeTotals();
+  } catch (e) { console.warn("loadQuestions", e); }
+
+  // Plans — cached for 24h
+  try { state.plans = await loadPlansCached(); } catch {}
+
+  // Results — cached for 1h, invalidated on submit
+  if (state.user) {
+    try { state.results = await loadResultsCached(state.user.uid); } catch {}
+  }
+
+  // Re-render current screen if data changed visibly
+  if (state.user && ["home", "profile", "sets", "premium", "bookmarks"].includes(state.screen)) {
+    render();
+  }
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (state._userSub) { state._userSub(); state._userSub = null; }
+  if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
 
   if (!user) {
     state.user = null; state.profile = null; state.isAdmin = false;
     state.sets = []; state.results = []; state.plans = [];
-    if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
     const { screen, params } = parseHash();
     if (screen === "login" || screen === "signup") {
       state.screen = screen; state.params = params; render();
@@ -2101,30 +2315,43 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   state.user = user;
+  const { screen, params } = parseHash();
+
+  // Try cache for instant render
+  const cachedProfile = loadProfileCache(user.uid);
+  if (cachedProfile) {
+    state.profile = cachedProfile;
+    state.isAdmin = (user.email === ADMIN_EMAIL && user.emailVerified) || cachedProfile.role === "admin";
+    if (cachedProfile.status === "blocked") {
+      modal("Account Blocked", "Your account has been blocked. Contact the administrator.",
+        [{ label: "Logout", cls: "btn-danger", onClick: logout }]);
+      return;
+    }
+    // Show target screen immediately from cache
+    renderWithBootTarget(screen, params);
+    // Realtime updates
+    setupRealtimeProfile(user);
+    // Background data
+    loadDataInBackground();
+    return;
+  }
+
+  // No cache — full load (slow path first time only)
+  state.screen = "loading";
+  render();
   try {
     state.profile = await ensureUserProfile(user);
-    state.isAdmin = user.email === ADMIN_EMAIL || state.profile.role === "admin";
+    state.isAdmin = (user.email === ADMIN_EMAIL && user.emailVerified) || state.profile.role === "admin";
+    saveProfileCache(user.uid, state.profile);
     if (state.profile.status === "blocked") {
       modal("Account Blocked", "Your account has been blocked. Contact the administrator.",
         [{ label: "Logout", cls: "btn-danger", onClick: logout }]);
       return;
     }
-    try {
-      const qr = await loadQuestions();
-      state.sets = buildSets(qr.rows);
-      recomputeTotals();
-    } catch (e) { console.error("loadQuestions", e); }
-    state.plans = await loadPlans();
-    state.results = await loadResults(user.uid);
+    await loadDataInBackground();
+    setupRealtimeProfile(user);
 
-    state._userSub = onSnapshot(doc(db, "users", user.uid), snap => {
-      if (snap.exists()) {
-        state.profile = { uid: user.uid, ...snap.data() };
-        if (!["exam", "practice", "result"].includes(state.screen)) render();
-      }
-    });
-
-    // FIX #9 — restore redirect target saved before signInWithRedirect
+    // Handle Google redirect return
     const redirectTarget = sessionStorage.getItem(REDIRECT_AFTER_KEY);
     if (redirectTarget) {
       sessionStorage.removeItem(REDIRECT_AFTER_KEY);
@@ -2133,22 +2360,7 @@ onAuthStateChanged(auth, async (user) => {
       }
     }
 
-    const { screen, params } = parseHash();
-    if (screen === "loading" || screen === "login" || screen === "signup") {
-      navigate(params.next || "home");
-    } else if (screen === "exam") {
-      const saved = loadExamState();
-      if (saved) {
-        state.screen = "exam";
-        resumeExamFromSaved(saved);
-      } else {
-        replaceNavigate("sets");
-      }
-    } else {
-      state.screen = screen;
-      state.params = params;
-      render();
-    }
+    renderWithBootTarget(screen, params);
   } catch (e) {
     console.error("Boot error", e);
     toast("Load error: " + e.message, "err");
@@ -2157,7 +2369,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// FIX #7 — keyboard shortcuts skip when modal is open
+/* Keyboard shortcuts for exam */
 window.addEventListener("keydown", (e) => {
   if (state.screen !== "exam") return;
   if (e.target.matches("input, textarea, select")) return;
@@ -2169,3 +2381,6 @@ window.addEventListener("keydown", (e) => {
   } else if (k === "arrowright") $("nextBtn")?.click();
   else if (k === "arrowleft") $("prevBtn")?.click();
 });
+
+/* ============ INIT ============ */
+initHistory();
