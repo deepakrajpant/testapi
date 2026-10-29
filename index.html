@@ -1,208 +1,348 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2457d6">
-<title>Dream Japan - Firebase Manager</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dream Japan – Admin Dashboard</title>
 <style>
-:root {
-  --bg:#f4f7fc;
-  --card:#fff;
-  --text:#172033;
-  --muted:#667085;
-  --primary:#2457d6;
-  --border:#dce3ed;
-  --green:#137547;
-  --red:#b42318;
+:root{
+  --bg:#faf7f2;--card:#fff;--text:#1f1b19;--muted:#8a8179;
+  --red:#c94536;--red2:#e8604f;--redl:#fdf0ee;--line:#ece5dc;
+  --ok:#2e9e6b;--okl:#e8f7ef;--bad:#d64545;--badl:#fdecec;
+  --shadow:0 6px 20px rgba(80,40,30,.08);
 }
-* { box-sizing:border-box; }
-body {
-  margin:0;
-  padding:15px;
-  background:var(--bg);
-  color:var(--text);
-  font-family:Arial,sans-serif;
-}
-main { max-width:800px; margin:auto; }
-header { padding:12px 0 18px; }
-header h1 { margin:0 0 6px; font-size:27px; }
-header p { margin:0; color:var(--muted); }
-.card {
-  background:var(--card);
-  padding:17px;
-  margin-bottom:15px;
-  border:1px solid var(--border);
-  border-radius:15px;
-}
-h2 { margin:0 0 14px; font-size:18px; }
-label {
-  display:block;
-  font-size:14px;
-  font-weight:bold;
-  margin:12px 0 6px;
-}
-input,textarea {
-  display:block;
-  width:100%;
-  padding:12px;
-  border:1px solid var(--border);
-  border-radius:9px;
-  background:white;
-  font-size:15px;
-  color:var(--text);
-}
-textarea { min-height:180px; resize:vertical; }
-button {
-  display:block;
-  width:100%;
-  padding:13px;
-  margin-top:10px;
-  border:0;
-  border-radius:9px;
-  background:var(--primary);
-  color:white;
-  font-size:15px;
-  font-weight:bold;
-  cursor:pointer;
-}
-button:disabled { opacity:.55; cursor:not-allowed; }
-button.secondary { background:#e9eefb; color:#24499c; }
-.status {
-  padding:12px;
-  border-radius:9px;
-  background:#edf1f6;
-  font-size:14px;
-  line-height:1.6;
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-}
-.status.ok { background:#e6f7ec; color:var(--green); }
-.status.err { background:#fff0f0; color:var(--red); }
-.small { color:var(--muted); font-size:13px; line-height:1.6; }
-.hidden { display:none !important; }
-.stats { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
-.stat { background:#edf3ff; padding:9px 11px; border-radius:8px; font-size:13px; }
-.q { border:1px solid var(--border); padding:12px; border-radius:9px; margin-top:10px; overflow-wrap:anywhere; }
-.q h3 { margin:0 0 8px; font-size:15px; }
-.q p { font-size:14px; line-height:1.5; margin:6px 0; }
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP",Roboto,sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh;padding:16px;
+  padding-top:env(safe-area-inset-top,16px);padding-bottom:env(safe-area-inset-bottom,16px)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(circle at 85% -5%,rgba(201,69,54,.12),transparent 45%),
+             radial-gradient(circle at -10% 105%,rgba(232,96,79,.10),transparent 40%)}
+.app{max-width:900px;margin:0 auto}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--red2),var(--red));
+  display:grid;place-items:center;box-shadow:0 4px 14px rgba(201,69,54,.4);flex-shrink:0}
+.logo svg{width:22px;height:22px}
+.hdr h1{font-size:19px;font-weight:800;letter-spacing:-.4px}
+.hdr p{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:1.5px;margin-top:1px}
+.hdr .user{margin-left:auto;display:flex;align-items:center;gap:8px}
+.hdr .user img{width:32px;height:32px;border-radius:50%;border:2px solid var(--line)}
+.hdr .user span{font-size:11px;font-weight:700;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* login */
+.login-box{max-width:400px;margin:80px auto;background:var(--card);border:1px solid var(--line);
+  border-radius:20px;padding:32px 24px;box-shadow:var(--shadow);text-align:center}
+.login-box h2{font-size:20px;font-weight:800;margin-bottom:6px}
+.login-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px}
+.login-box .btn-google{display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);
+  font-size:14px;font-weight:800;cursor:pointer;transition:all .15s}
+.login-box .btn-google:hover{border-color:var(--red);background:var(--redl)}
+.login-box .err{color:var(--bad);font-size:12px;font-weight:700;margin-top:12px;min-height:18px}
+
+/* toolbar */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center}
+.toolbar .btn{padding:9px 16px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);
+  color:var(--text);font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;width:auto}
+.toolbar .btn:hover{border-color:var(--red);color:var(--red)}
+.toolbar .btn.primary{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff;border-color:transparent}
+.toolbar .btn.primary:hover{opacity:.9}
+.toolbar .spacer{flex:1}
+.toolbar .stat{font-size:11px;font-weight:700;color:var(--muted);background:var(--card);
+  padding:7px 12px;border-radius:20px;border:1px solid var(--line)}
+
+/* filters */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.filters select,.filters input{padding:9px 12px;border:1.5px solid var(--line);border-radius:10px;
+  background:var(--card);font-size:12px;font-weight:600;color:var(--text);min-width:0;flex:1;min-width:120px}
+.filters input{flex:2;min-width:160px}
+.filters select:focus,.filters input:focus{outline:none;border-color:var(--red)}
+
+/* question list */
+.q-list{display:flex;flex-direction:column;gap:10px}
+.q-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;
+  box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s}
+.q-item:hover{border-color:var(--red2)}
+.q-item .q-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.q-item .q-top .badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;
+  background:var(--redl);color:var(--red)}
+.q-item .q-top .badge.sec{background:var(--line);color:var(--muted)}
+.q-item .q-text{font-size:13.5px;line-height:1.5;margin-bottom:6px;word-break:break-word}
+.q-item .q-meta{display:flex;gap:12px;font-size:10.5px;color:var(--muted);font-weight:600;flex-wrap:wrap}
+.q-item .q-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.q-item .q-actions button{padding:6px 12px;border-radius:8px;border:1px solid var(--line);
+  background:var(--card);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.q-item .q-actions button.edit{border-color:var(--red2);color:var(--red)}
+.q-item .q-actions button.edit:hover{background:var(--red);color:#fff}
+.q-item .q-actions button.del{border-color:var(--bad);color:var(--bad)}
+.q-item .q-actions button.del:hover{background:var(--bad);color:#fff}
+.q-item .q-actions button.preview{border-color:var(--ok);color:var(--ok)}
+.q-item .q-actions button.preview:hover{background:var(--ok);color:#fff}
+
+/* editor modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;
+  justify-content:center;z-index:100;padding:20px;overflow-y:auto;backdrop-filter:blur(3px)}
+.overlay.show{display:flex}
+.editor{background:var(--card);border-radius:20px;padding:24px;max-width:640px;width:100%;
+  box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto;animation:in .25s}
+@keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.editor h3{font-size:17px;font-weight:800;margin-bottom:16px}
+.editor .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.editor .field{display:flex;flex-direction:column;gap:4px}
+.editor .field label{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.editor .field input,.editor .field select,.editor .field textarea{
+  width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:9px;background:var(--bg);
+  font-size:13px;font-weight:500;color:var(--text);font-family:inherit}
+.editor .field textarea{resize:vertical;min-height:60px;line-height:1.5}
+.editor .field input:focus,.editor .field select:focus,.editor .field textarea:focus{outline:none;border-color:var(--red)}
+.editor .full{grid-column:1/-1}
+.editor .actions{display:flex;gap:8px;margin-top:16px}
+.editor .actions button{flex:1;padding:12px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer}
+.editor .actions .save{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff}
+.editor .actions .cancel{background:var(--line);color:var(--muted)}
+.editor .actions .save:disabled{opacity:.5;cursor:not-allowed}
+
+/* preview modal */
+.preview-box{background:var(--card);border-radius:20px;padding:24px;max-width:600px;width:100%;
+  box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto;animation:in .25s}
+.preview-box h3{font-size:16px;font-weight:800;margin-bottom:14px}
+.preview-box .pv-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.preview-box .pv-meta span{font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:20px;
+  background:var(--redl);color:var(--red)}
+.preview-box .pv-meta span.sec{background:var(--line);color:var(--muted)}
+.preview-box .passage{background:var(--bg);border-left:4px solid var(--red2);border-radius:8px;
+  padding:12px;font-size:13.5px;line-height:1.7;margin-bottom:12px;white-space:pre-line}
+.preview-box .qt{font-size:16px;font-weight:700;line-height:1.6;margin-bottom:12px;white-space:pre-line}
+.preview-box img{width:100%;border-radius:12px;margin-bottom:12px;border:1px solid var(--line);display:block}
+.preview-box audio{width:100%;margin-bottom:12px}
+.preview-box .opt{padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;margin-top:7px;
+  font-size:13.5px;line-height:1.45}
+.preview-box .opt.correct{background:var(--okl);border-color:var(--ok);font-weight:700}
+.preview-box .opt .ltr{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--line);
+  text-align:center;line-height:22px;font-size:10px;font-weight:800;margin-right:6px;color:var(--muted)}
+.preview-box .opt.correct .ltr{background:var(--ok);color:#fff}
+.preview-box .pv-close{width:100%;padding:12px;border-radius:10px;border:0;background:var(--line);
+  color:var(--text);font-size:13px;font-weight:800;cursor:pointer;margin-top:12px}
+
+/* toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);
+  background:var(--text);color:var(--bg);padding:12px 20px;border-radius:24px;
+  font-size:13px;font-weight:700;z-index:200;opacity:0;transition:all .3s;pointer-events:none;
+  box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw;text-align:center}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.ok{background:var(--ok);color:#fff}
+.toast.err{background:var(--bad);color:#fff}
+
+/* loading */
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 0;
+  font-size:13px;color:var(--muted);font-weight:700}
+.spinner{width:20px;height:20px;border:2.5px solid var(--line);border-top-color:var(--red);
+  border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:40px 0;font-size:13px;color:var(--muted);font-weight:600}
+
+/* confirm */
+.confirm-box{background:var(--card);border-radius:18px;padding:24px;max-width:340px;width:100%;
+  text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2)}
+.confirm-box h3{font-size:17px;font-weight:800;margin-bottom:8px}
+.confirm-box p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px}
+.confirm-box .acts{display:flex;gap:8px}
+.confirm-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:13px;font-weight:800;cursor:pointer}
+.confirm-box .acts .y{background:var(--bad);color:#fff}
+.confirm-box .acts .n{background:var(--line);color:var(--muted)}
+
+/* json box */
+.json-box{background:var(--card);border-radius:18px;padding:24px;max-width:600px;width:100%;
+  box-shadow:0 12px 40px rgba(0,0,0,.2);margin:20px auto}
+.json-box h3{font-size:16px;font-weight:800;margin-bottom:12px}
+.json-box textarea{width:100%;min-height:180px;padding:12px;border:1.5px solid var(--line);
+  border-radius:10px;background:var(--bg);font-size:11px;font-family:ui-monospace,Menlo,monospace;
+  line-height:1.5;resize:vertical;margin-bottom:12px}
+.json-box .acts{display:flex;gap:8px}
+.json-box .acts button{flex:1;padding:11px;border-radius:10px;border:0;font-size:12px;font-weight:800;cursor:pointer}
+.json-box .acts .imp{background:linear-gradient(135deg,var(--red2),var(--red));color:#fff}
+.json-box .acts .exp{background:var(--ok);color:#fff}
+.json-box .acts .cls{background:var(--line);color:var(--muted)}
 </style>
 </head>
-
 <body>
-<main>
+<div class="app">
 
-<header>
-  <h1>Dream Japan 🇯🇵</h1>
-  <p>JFT Mock Test — Firebase Admin Panel</p>
-</header>
-
-<section class="card">
-  <h2>1. Google Login</h2>
-  <div id="authStatus" class="status">Firebase जडान हुँदैछ...</div>
-  <button id="loginBtn" disabled>Continue with Google</button>
-  <button id="logoutBtn" class="secondary hidden">Logout</button>
-  <p class="small">
-    Google login सफल भएपछि user profile Firestore को users collection मा save हुनेछ।
-  </p>
-</section>
-
-<section class="card">
-  <h2>2. Question Database</h2>
-
-  <label>Collection Name</label>
-  <input id="collection" value="jftoctnovset">
-
-  <label>Document ID</label>
-  <input id="documentId" value="QORwII8D7qLZ7wuCDW36">
-
-  <button id="readBtn" disabled>Read Questions</button>
-  <button id="backupBtn" class="secondary" disabled>Download Backup JSON</button>
-
-  <div id="readStatus" class="status" style="margin-top:12px">
-    Login गरेपछि प्रश्न पढ्न सक्नुहुन्छ।
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen">
+    <div class="hdr">
+      <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
+      <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
+    </div>
+    <div class="login-box">
+      <h2>Admin Login</h2>
+      <p>Sign in with your authorized Google account to manage questions.</p>
+      <button class="btn-google" id="googleLoginBtn" onclick="handleGoogleLogin()">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <div class="err" id="loginErr"></div>
+    </div>
   </div>
 
-  <div id="stats" class="stats"></div>
-  <div id="questionList"></div>
-</section>
+  <!-- ADMIN PANEL -->
+  <div id="adminPanel" style="display:none">
+    <div class="hdr">
+      <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>
+      <div><h1>Admin Dashboard</h1><p>DREAM JAPAN · JFT MOCK TEST</p></div>
+      <div class="user">
+        <img id="userPhoto" src="" alt="" style="display:none">
+        <span id="userEmail"></span>
+        <button class="btn" style="padding:6px 12px;font-size:11px" onclick="handleLogout()">Logout</button>
+      </div>
+    </div>
 
-<section class="card">
-  <h2>3. Import Questions</h2>
+    <div class="toolbar">
+      <button class="btn primary" onclick="openEditor()">＋ Add Question</button>
+      <button class="btn" onclick="openJsonModal('import')">📥 Import JSON</button>
+      <button class="btn" onclick="openJsonModal('export')">📤 Export JSON</button>
+      <span class="spacer"></span>
+      <span class="stat" id="qCount">0 questions</span>
+    </div>
 
-  <label>Choose JSON File</label>
-  <input id="jsonFile" type="file" accept=".json,application/json">
+    <div class="filters">
+      <select id="filterSet" onchange="renderList()">
+        <option value="all">All Sets</option>
+        <option value="1">Set 1</option>
+        <option value="2">Set 2</option>
+        <option value="3">Set 3</option>
+        <option value="4">Set 4</option>
+        <option value="5">Set 5</option>
+        <option value="6">Set 6</option>
+      </select>
+      <select id="filterSection" onchange="renderList()">
+        <option value="all">All Sections</option>
+        <option value="sv">Script & Vocabulary</option>
+        <option value="ce">Conversation & Expression</option>
+        <option value="lc">Listening Comprehension</option>
+        <option value="rc">Reading Comprehension</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="Search question text…" oninput="renderList()">
+    </div>
 
-  <label>Paste JSON</label>
-  <textarea id="jsonInput" spellcheck="false"
-    placeholder='{"questions":[[1,"sv","Question text","","","", "A","Option A","Option B","Option C","Option D"]]}'
-  ></textarea>
-
-  <button id="validateBtn" class="secondary">Validate JSON</button>
-  <div id="writeStatus" class="status" style="margin-top:12px">
-    पहिले JSON validate गर्नुहोस्।
+    <div id="listContainer">
+      <div class="loading"><div class="spinner"></div> Loading questions…</div>
+    </div>
   </div>
 
-  <button id="writeBtn" disabled>Write Questions to Firebase</button>
+</div>
 
-  <p class="small">
-    सावधानी: Write गर्दा यस document को पुरानो data replace हुन्छ।
-    पहिले Read गरेर backup लिनुहोस्।
-  </p>
-</section>
+<!-- EDITOR OVERLAY -->
+<div class="overlay" id="editorOverlay">
+  <div class="editor">
+    <h3 id="editorTitle">Add Question</h3>
+    <div class="row">
+      <div class="field">
+        <label>Set (1–6)</label>
+        <select id="edSet">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Section</label>
+        <select id="edSection">
+          <option value="sv">Script & Vocabulary</option>
+          <option value="ce">Conversation & Expression</option>
+          <option value="lc">Listening Comprehension</option>
+          <option value="rc">Reading Comprehension</option>
+        </select>
+      </div>
+    </div>
+    <div class="field full" style="margin-bottom:12px">
+      <label>Question text</label>
+      <textarea id="edQuestion" placeholder="「日本」の読み方はどれですか。"></textarea>
+    </div>
+    <div class="field full" style="margin-bottom:12px">
+      <label>Passage (optional)</label>
+      <textarea id="edPassage" placeholder="Reading passage or listening script…"></textarea>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Image URL (optional)</label>
+        <input type="text" id="edImage" placeholder="scene:rain or https://…">
+      </div>
+      <div class="field">
+        <label>Audio URL (optional)</label>
+        <input type="text" id="edAudio" placeholder="tts:こんにちは or https://…">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Correct Answer</label>
+        <select id="edAnswer">
+          <option value="A">A</option><option value="B">B</option>
+          <option value="C">C</option><option value="D">D</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Option A</label>
+        <input type="text" id="edA">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Option B</label><input type="text" id="edB"></div>
+      <div class="field"><label>Option C</label><input type="text" id="edC"></div>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label>Option D (optional)</label>
+      <input type="text" id="edD">
+    </div>
+    <div class="actions">
+      <button class="cancel" onclick="closeEditor()">Cancel</button>
+      <button class="save" id="saveBtn" onclick="saveQuestion()">Save</button>
+    </div>
+  </div>
+</div>
 
-<section class="card">
-  <h2>4. Question Format</h2>
-  <pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px">{
-  "questions": [
-    {
-      "set": 1,
-      "section": "sv",
-      "question": "「日本」の読み方はどれですか。",
-      "passage": "",
-      "image": "",
-      "audio": "",
-      "answer": "A",
-      "A": "にほん",
-      "B": "にぽん",
-      "C": "ひほん",
-      "D": "にもん"
-    }
-  ]
-}</pre>
-  <p class="small">
-    Section: sv, ce, lc, rc
-    <br>Image र audio मा URL राख्नुहोस्।
-  </p>
-</section>
+<!-- PREVIEW OVERLAY -->
+<div class="overlay" id="previewOverlay">
+  <div class="preview-box" id="previewContent"></div>
+</div>
 
-</main>
+<!-- CONFIRM OVERLAY -->
+<div class="overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p id="confirmMsg"></p>
+    <div class="acts">
+      <button class="n" onclick="closeConfirm()">Cancel</button>
+      <button class="y" id="confirmYes">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- JSON OVERLAY -->
+<div class="overlay" id="jsonOverlay">
+  <div class="json-box">
+    <h3 id="jsonTitle">JSON</h3>
+    <textarea id="jsonArea" readonly></textarea>
+    <div class="acts">
+      <button class="cls" onclick="closeJsonModal()">Close</button>
+      <button class="imp" id="jsonImportBtn" onclick="importJson()" style="display:none">Import</button>
+      <button class="exp" id="jsonExportBtn" onclick="exportJson()">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
 
 <script type="module">
-import { initializeApp }
-  from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+/* ==================================================================
+   FIREBASE CONFIGURATION
+   ================================================================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, updateDoc, setDoc }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
-
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-
-/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyD_JxMqTdYiW2DF8lgAlojh1quO32M0CuI",
   authDomain: "dream-japan-9cad8.firebaseapp.com",
@@ -213,451 +353,513 @@ const firebaseConfig = {
   measurementId: "G-V3M5626QM5"
 };
 
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+const DOC_PATH = "jftoctnovset/QORwII8D7qLZ7wuCDW36";
 const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
-
-provider.setCustomParameters({
-  prompt: "select_account"
-});
+/* ==================================================================
+   STATE
+   ================================================================== */
+let questions = [];        // current questions array from Firestore
+let editingIndex = -1;     // -1 = adding new, >=0 = editing existing
+let currentUser = null;
+let isSaving = false;
 
 const $ = id => document.getElementById(id);
 
-let currentUser = null;
-let questions = [];
-let pendingQuestions = null;
-let authReady = false;
-
-function show(id, message, type = "") {
-  const el = $(id);
-  el.textContent = message;
-  el.className = "status" + (type ? " " + type : "");
+/* ==================================================================
+   TOAST
+   ================================================================== */
+let toastTimer;
+function toast(msg, type = '') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-function explainError(error) {
-  const code = error?.code || "unknown";
-  const message = error?.message || "Unknown error";
+/* ==================================================================
+   AUTH
+   ================================================================== */
+function handleGoogleLogin() {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  $('loginErr').textContent = '';
 
-  const hints = {
-    "auth/unauthorized-domain":
-      "Firebase Console → Authentication → Settings → Authorized domains मा तपाईंको वास्तविक website domain थप्नुहोस्।",
-    "auth/operation-not-allowed":
-      "Firebase Console → Authentication → Sign-in method → Google लाई Enable गर्नुहोस्।",
-    "auth/popup-blocked":
-      "Browser ले popup रोक्यो। Google Login फेरि थिच्नुहोस् वा Chrome मा खोल्नुहोस्।",
-    "auth/popup-closed-by-user":
-      "Login popup बन्द भयो। फेरि प्रयास गर्नुहोस्।",
-    "auth/network-request-failed":
-      "Internet connection जाँच्नुहोस् र फेरि प्रयास गर्नुहोस्।",
-    "auth/unauthorized-continue-uri":
-      "Firebase Authorized domains मा हालको website domain थप्नुहोस्।",
-    "auth/invalid-api-key":
-      "Firebase project को Web App config जाँच्नुहोस्।"
-  };
-
-  return code + "\n" + message +
-    (hints[code] ? "\n\nसमाधान: " + hints[code] : "");
-}
-
-function isAdmin() {
-  return !!currentUser &&
-    currentUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() &&
-    currentUser.emailVerified === true;
-}
-
-function updateButtons() {
-  const signedIn = !!currentUser;
-  $("loginBtn").classList.toggle("hidden", signedIn);
-  $("logoutBtn").classList.toggle("hidden", !signedIn);
-
-  $("loginBtn").disabled = !authReady;
-  $("readBtn").disabled = !signedIn;
-  $("backupBtn").disabled = !signedIn || questions.length === 0;
-  $("writeBtn").disabled = !isAdmin() || !pendingQuestions;
-}
-
-function getQuestionRef() {
-  const collection = $("collection").value.trim();
-  const documentId = $("documentId").value.trim();
-
-  if (!collection || !documentId) {
-    throw new Error("Collection र Document ID लेख्नुहोस्।");
-  }
-
-  return doc(db, collection, documentId);
-}
-
-function normalizeQuestion(item, index) {
-  if (Array.isArray(item)) {
-    if (item.length !== 11) {
-      throw new Error(
-        `Question ${index + 1}: 11 वटा values हुनुपर्छ।`
-      );
-    }
-
-    item = {
-      set: item[0],
-      section: item[1],
-      question: item[2],
-      passage: item[3],
-      image: item[4],
-      audio: item[5],
-      answer: item[6],
-      A: item[7],
-      B: item[8],
-      C: item[9],
-      D: item[10]
-    };
-  }
-
-  if (!item || typeof item !== "object") {
-    throw new Error(`Question ${index + 1}: Invalid format.`);
-  }
-
-  const q = {
-    set: Number(item.set),
-    section: String(item.section ?? "").trim().toLowerCase(),
-    question: String(item.question ?? ""),
-    passage: String(item.passage ?? ""),
-    image: String(item.image ?? ""),
-    audio: String(item.audio ?? ""),
-    answer: String(item.answer ?? "").trim().toUpperCase(),
-    A: String(item.A ?? ""),
-    B: String(item.B ?? ""),
-    C: String(item.C ?? ""),
-    D: String(item.D ?? "")
-  };
-
-  if (!Number.isInteger(q.set) || q.set < 1) {
-    throw new Error(`Question ${index + 1}: Set number गलत छ।`);
-  }
-
-  if (!["sv", "ce", "lc", "rc"].includes(q.section)) {
-    throw new Error(`Question ${index + 1}: section गलत छ।`);
-  }
-
-  if (!q.question.trim()) {
-    throw new Error(`Question ${index + 1}: प्रश्न खाली छ।`);
-  }
-
-  if (!["A", "B", "C", "D"].includes(q.answer)) {
-    throw new Error(`Question ${index + 1}: answer A/B/C/D हुनुपर्छ।`);
-  }
-
-  for (const key of ["A", "B", "C", "D"]) {
-    if (!q[key].trim()) {
-      throw new Error(`Question ${index + 1}: Option ${key} खाली छ।`);
-    }
-  }
-
-  return q;
-}
-
-function parseQuestions(raw) {
-  const parsed = JSON.parse(raw);
-  const list = Array.isArray(parsed) ? parsed : parsed.questions;
-
-  if (!Array.isArray(list) || list.length === 0) {
-    throw new Error('JSON मा non-empty "questions" array हुनुपर्छ।');
-  }
-
-  return list.map(normalizeQuestion);
-}
-
-function renderQuestions(list) {
-  $("stats").replaceChildren();
-  $("questionList").replaceChildren();
-
-  const counts = { sv: 0, ce: 0, lc: 0, rc: 0 };
-  list.forEach(q => counts[q.section]++);
-
-  for (const text of [
-    `Total: ${list.length}`,
-    `SV: ${counts.sv}`,
-    `CE: ${counts.ce}`,
-    `LC: ${counts.lc}`,
-    `RC: ${counts.rc}`
-  ]) {
-    const el = document.createElement("div");
-    el.className = "stat";
-    el.textContent = text;
-    $("stats").appendChild(el);
-  }
-
-  const sectionNames = {
-    sv: "Script & Vocabulary",
-    ce: "Conversation & Expression",
-    lc: "Listening Comprehension",
-    rc: "Reading Comprehension"
-  };
-
-  list.slice(0, 100).forEach((q, index) => {
-    const box = document.createElement("div");
-    box.className = "q";
-
-    const title = document.createElement("h3");
-    title.textContent =
-      `${index + 1}. Set ${q.set} — ${sectionNames[q.section]}`;
-
-    const question = document.createElement("p");
-    question.textContent = q.question;
-
-    const passage = document.createElement("p");
-    passage.textContent = q.passage ? "Passage: " + q.passage : "";
-
-    const options = document.createElement("p");
-    options.textContent =
-      `A. ${q.A} | B. ${q.B} | C. ${q.C} | D. ${q.D}`;
-
-    const answer = document.createElement("p");
-    answer.textContent = "Answer: " + q.answer;
-
-    box.append(title, question, passage, options, answer);
-
-    if (q.image) {
-      const p = document.createElement("p");
-      p.textContent = "Image: " + q.image;
-      box.appendChild(p);
-    }
-
-    if (q.audio) {
-      const p = document.createElement("p");
-      p.textContent = "Audio: " + q.audio;
-      box.appendChild(p);
-    }
-
-    $("questionList").appendChild(box);
+  signInWithPopup(auth, provider).catch(err => {
+    console.error('Login error:', err);
+    let msg = 'Login failed. ';
+    if (err.code === 'auth/popup-closed-by-user') msg += 'Popup was closed. Please try again.';
+    else if (err.code === 'auth/popup-blocked') msg += 'Popup blocked. Allow popups for this site.';
+    else if (err.code === 'auth/cancelled-popup-request') msg += 'Request cancelled.';
+    else msg += err.message || 'Unknown error.';
+    $('loginErr').textContent = msg;
   });
-
-  if (list.length > 100) {
-    const note = document.createElement("p");
-    note.className = "small";
-    note.textContent = "Preview मा पहिलो 100 प्रश्न मात्र देखाइएको छ।";
-    $("questionList").appendChild(note);
-  }
 }
 
-/* GOOGLE LOGIN
-   Popup first. If the browser blocks popups, offer redirect. */
-$("loginBtn").addEventListener("click", async () => {
-  $("loginBtn").disabled = true;
-  show("authStatus", "Google login खोलिँदैछ...");
-
-  try {
-    const result = await signInWithPopup(auth, provider);
-    show("authStatus", "Login सफल: " + result.user.email, "ok");
-  } catch (error) {
-    if (
-      error.code === "auth/popup-blocked" ||
-      error.code === "auth/operation-not-supported-in-this-environment"
-    ) {
-      const useRedirect = confirm(
-        "Popup चल्न सकेन। Redirect login प्रयोग गर्ने?"
-      );
-
-      if (useRedirect) {
-        try {
-          await signInWithRedirect(auth, provider);
-          return;
-        } catch (redirectError) {
-          show("authStatus", explainError(redirectError), "err");
-        }
-      } else {
-        show("authStatus", explainError(error), "err");
-      }
-    } else {
-      show("authStatus", explainError(error), "err");
-    }
-  }
-
-  updateButtons();
-});
-
-/* Handle redirect result if redirect login was used */
-try {
-  await getRedirectResult(auth);
-} catch (error) {
-  show("authStatus", explainError(error), "err");
+function handleLogout() {
+  signOut(auth).catch(err => toast('Logout error: ' + err.message, 'err'));
 }
 
-/* LOGIN STATE + PROFILE WRITE */
-onAuthStateChanged(auth, async user => {
-  currentUser = user;
-  authReady = true;
-  updateButtons();
-
-  if (!user) {
-    show("authStatus", "Login गर्न Continue with Google थिच्नुहोस्।");
-    return;
-  }
-
-  show("authStatus", "Login सफल। User profile save हुँदैछ...");
-
-  try {
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "",
-        photoURL: user.photoURL || "",
-        emailVerified: !!user.emailVerified,
-        lastLoginAt: serverTimestamp()
-      },
-      { merge: true }
-    );
-
-    show(
-      "authStatus",
-      `LOGIN SUCCESSFUL\nEmail: ${user.email}\nProfile: users/${user.uid}\nAdmin write access: ${isAdmin() ? "Yes" : "No"}`,
-      "ok"
-    );
-  } catch (error) {
-    show(
-      "authStatus",
-      `Google login सफल भयो तर Firestore profile save भएन।\n${explainError(error)}`,
-      "err"
-    );
-  }
-
-  updateButtons();
-});
-
-/* LOGOUT */
-$("logoutBtn").addEventListener("click", async () => {
-  try {
-    await signOut(auth);
-    show("authStatus", "Logout सफल भयो।");
-  } catch (error) {
-    show("authStatus", explainError(error), "err");
-  }
-});
-
-/* READ QUESTIONS */
-$("readBtn").addEventListener("click", async () => {
-  try {
-    show("readStatus", "Firebase बाट प्रश्न पढिँदैछ...");
-
-    const snapshot = await getDoc(getQuestionRef());
-
-    if (!snapshot.exists()) {
-      questions = [];
-      renderQuestions([]);
-      show(
-        "readStatus",
-        "Document भेटिएन। Collection र Document ID जाँच्नुहोस्।",
-        "err"
-      );
-      updateButtons();
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    if (user.email !== ADMIN_EMAIL || !user.emailVerified) {
+      $('loginScreen').style.display = 'block';
+      $('adminPanel').style.display = 'none';
+      $('loginErr').textContent = 'Unauthorized account. Only ' + ADMIN_EMAIL + ' (verified) can access this dashboard.';
+      await signOut(auth);
       return;
     }
-
-    const data = snapshot.data();
-
-    if (!Array.isArray(data.questions)) {
-      throw new Error("Document मा questions array छैन।");
+    currentUser = user;
+    $('loginScreen').style.display = 'none';
+    $('adminPanel').style.display = 'block';
+    $('userEmail').textContent = user.email;
+    if (user.photoURL) {
+      $('userPhoto').src = user.photoURL;
+      $('userPhoto').style.display = 'block';
     }
-
-    questions = data.questions.map(normalizeQuestion);
-    renderQuestions(questions);
-
-    show(
-      "readStatus",
-      `${questions.length} प्रश्न सफलतापूर्वक Read भए।`,
-      "ok"
-    );
-  } catch (error) {
-    show("readStatus", explainError(error), "err");
+    await loadQuestions();
+  } else {
+    currentUser = null;
+    $('loginScreen').style.display = 'block';
+    $('adminPanel').style.display = 'none';
+    questions = [];
   }
-
-  updateButtons();
 });
 
-/* LOAD JSON FILE */
-$("jsonFile").addEventListener("change", async event => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
+/* ==================================================================
+   FIRESTORE LOAD
+   ================================================================== */
+async function loadQuestions(showLoading = true) {
+  if (showLoading) $('listContainer').innerHTML = '<div class="loading"><div class="spinner"></div> Loading questions…</div>';
   try {
-    $("jsonInput").value = await file.text();
-    pendingQuestions = null;
-    updateButtons();
-    show("writeStatus", "JSON load भयो। अब Validate JSON थिच्नुहोस्।");
-  } catch (error) {
-    show("writeStatus", error.message, "err");
+    const snap = await getDoc(doc(db, DOC_PATH));
+    if (!snap.exists()) {
+      $('listContainer').innerHTML = '<div class="empty">Document not found. Check Firestore path.</div>';
+      toast('Document not found', 'err');
+      return;
+    }
+    const data = snap.data();
+    // Support both { questions: [...] } and direct array
+    if (Array.isArray(data)) {
+      questions = data;
+    } else if (Array.isArray(data.questions)) {
+      questions = data.questions;
+    } else {
+      // Try to find any array field
+      const keys = Object.keys(data);
+      const arrKey = keys.find(k => Array.isArray(data[k]));
+      if (arrKey) {
+        questions = data[arrKey];
+        toast('Using array field: "' + arrKey + '"', '');
+      } else {
+        $('listContainer').innerHTML = '<div class="empty">No questions array found in document.</div>';
+        return;
+      }
+    }
+    renderList();
+  } catch (err) {
+    console.error('Load error:', err);
+    $('listContainer').innerHTML = '<div class="empty">Failed to load questions: ' + escHtml(err.message) + '</div>';
+    toast('Load failed: ' + err.message, 'err');
   }
-});
+}
 
-/* VALIDATE JSON */
-$("validateBtn").addEventListener("click", () => {
+/* ==================================================================
+   SAVE TO FIRESTORE (full array write)
+   ================================================================== */
+async function saveQuestionsToFirestore(newQuestions) {
+  if (isSaving) { toast('Save in progress…', 'err'); return false; }
+  isSaving = true;
   try {
-    pendingQuestions = parseQuestions($("jsonInput").value);
-    renderQuestions(pendingQuestions);
-
-    show(
-      "writeStatus",
-      `${pendingQuestions.length} प्रश्न valid छन्।`,
-      "ok"
-    );
-  } catch (error) {
-    pendingQuestions = null;
-    show("writeStatus", error.message, "err");
+    const docRef = doc(db, DOC_PATH);
+    // Check existing doc to preserve other fields
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      await setDoc(docRef, { questions: newQuestions });
+    } else {
+      const data = snap.data();
+      if (Array.isArray(data)) {
+        // Document itself is an array (unusual) — overwrite
+        await setDoc(docRef, { questions: newQuestions });
+      } else if (Array.isArray(data.questions)) {
+        await updateDoc(docRef, { questions: newQuestions });
+      } else {
+        const keys = Object.keys(data);
+        const arrKey = keys.find(k => Array.isArray(data[k]));
+        if (arrKey) {
+          await updateDoc(docRef, { [arrKey]: newQuestions });
+        } else {
+          await updateDoc(docRef, { questions: newQuestions });
+        }
+      }
+    }
+    questions = newQuestions;
+    return true;
+  } catch (err) {
+    console.error('Save error:', err);
+    toast('Save failed: ' + err.message, 'err');
+    return false;
+  } finally {
+    isSaving = false;
   }
+}
 
-  updateButtons();
-});
+/* ==================================================================
+   RENDER LIST
+   ================================================================== */
+function renderList() {
+  const fSet = $('filterSet').value;
+  const fSec = $('filterSection').value;
+  const search = $('searchInput').value.trim().toLowerCase();
 
-/* WRITE QUESTIONS — FIRESTORE RULES ALSO ENFORCE ADMIN */
-$("writeBtn").addEventListener("click", async () => {
-  if (!isAdmin() || !pendingQuestions) {
-    show("writeStatus", "Verified admin account आवश्यक छ।", "err");
+  let list = questions.map((row, i) => ({ row, i }));
+  if (fSet !== 'all') list = list.filter(x => String(x.row[0]) === fSet);
+  if (fSec !== 'all') list = list.filter(x => String(x.row[1]).toLowerCase() === fSec);
+  if (search) list = list.filter(x => String(x.row[2] || '').toLowerCase().includes(search));
+
+  $('qCount').textContent = list.length + ' question' + (list.length === 1 ? '' : 's');
+
+  const c = $('listContainer');
+  if (!list.length) {
+    c.innerHTML = '<div class="empty">No questions match your filters.</div>';
     return;
   }
 
-  if (!confirm(
-    `${pendingQuestions.length} प्रश्न save गर्ने?\n` +
-    "यो document को पुरानो data replace हुनेछ।"
-  )) return;
+  c.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'q-list';
 
-  $("writeBtn").disabled = true;
+  list.forEach(({ row, i }) => {
+    const setNum = row[0] || '?';
+    const secCode = String(row[1] || '').toLowerCase();
+    const secName = { sv: 'Vocab', ce: 'Conv', lc: 'Listen', rc: 'Read' }[secCode] || secCode;
+    const qText = String(row[2] || '(no question text)');
+    const answer = String(row[6] || '?');
+    const img = row[4] ? String(row[4]).trim() : '';
+    const aud = row[5] ? String(row[5]).trim() : '';
 
-  try {
-    await setDoc(getQuestionRef(), {
-      questions: pendingQuestions,
-      updatedAt: serverTimestamp(),
-      updatedBy: currentUser.email
-    });
+    const d = document.createElement('div');
+    d.className = 'q-item';
 
-    questions = pendingQuestions;
-    renderQuestions(questions);
+    const top = document.createElement('div');
+    top.className = 'q-top';
+    top.innerHTML = '<span class="badge">Set ' + setNum + '</span>' +
+      '<span class="badge sec">' + secName + '</span>';
 
-    show("writeStatus", `${questions.length} प्रश्न save भए।`, "ok");
-    show("readStatus", "Latest data Firebase मा save भयो।", "ok");
-  } catch (error) {
-    show("writeStatus", explainError(error), "err");
+    const txt = document.createElement('div');
+    txt.className = 'q-text';
+    txt.textContent = qText.length > 120 ? qText.slice(0, 120) + '…' : qText;
+
+    const meta = document.createElement('div');
+    meta.className = 'q-meta';
+    meta.innerHTML = '<span>Ans: ' + answer + '</span>' +
+      '<span>' + (img ? '🖼 Image' : '') + ' ' + (aud ? '🔊 Audio' : '') + '</span>' +
+      '<span>#' + (i + 1) + '</span>';
+
+    const acts = document.createElement('div');
+    acts.className = 'q-actions';
+    acts.innerHTML =
+      '<button class="preview">Preview</button>' +
+      '<button class="edit">Edit</button>' +
+      '<button class="del">Delete</button>';
+
+    acts.querySelector('.preview').onclick = (e) => { e.stopPropagation(); openPreview(i); };
+    acts.querySelector('.edit').onclick = (e) => { e.stopPropagation(); openEditor(i); };
+    acts.querySelector('.del').onclick = (e) => { e.stopPropagation(); confirmDelete(i); };
+    d.onclick = () => openPreview(i);
+
+    d.appendChild(top); d.appendChild(txt); d.appendChild(meta); d.appendChild(acts);
+    container.appendChild(d);
+  });
+
+  c.appendChild(container);
+}
+
+/* ==================================================================
+   EDITOR
+   ================================================================== */
+function openEditor(idx) {
+  editingIndex = (idx === undefined || idx === null) ? -1 : idx;
+  $('editorTitle').textContent = editingIndex === -1 ? 'Add Question' : 'Edit Question';
+  $('saveBtn').textContent = editingIndex === -1 ? 'Add' : 'Update';
+
+  if (editingIndex === -1) {
+    $('edSet').value = '1';
+    $('edSection').value = 'sv';
+    $('edQuestion').value = '';
+    $('edPassage').value = '';
+    $('edImage').value = '';
+    $('edAudio').value = '';
+    $('edAnswer').value = 'A';
+    $('edA').value = ''; $('edB').value = ''; $('edC').value = ''; $('edD').value = '';
+  } else {
+    const r = questions[editingIndex];
+    $('edSet').value = r[0] || '1';
+    $('edSection').value = String(r[1] || 'sv').toLowerCase();
+    $('edQuestion').value = r[2] || '';
+    $('edPassage').value = r[3] || '';
+    $('edImage').value = r[4] || '';
+    $('edAudio').value = r[5] || '';
+    $('edAnswer').value = r[6] || 'A';
+    $('edA').value = r[7] || '';
+    $('edB').value = r[8] || '';
+    $('edC').value = r[9] || '';
+    $('edD').value = r[10] || '';
+  }
+  $('editorOverlay').classList.add('show');
+}
+
+function closeEditor() {
+  $('editorOverlay').classList.remove('show');
+  editingIndex = -1;
+}
+
+async function saveQuestion() {
+  const set = $('edSet').value;
+  const section = $('edSection').value;
+  const question = $('edQuestion').value.trim();
+  const passage = $('edPassage').value.trim();
+  const image = $('edImage').value.trim();
+  const audio = $('edAudio').value.trim();
+  const answer = $('edAnswer').value;
+  const A = $('edA').value.trim();
+  const B = $('edB').value.trim();
+  const C = $('edC').value.trim();
+  const D = $('edD').value.trim();
+
+  // Validation
+  if (!question) { toast('Question text is required', 'err'); $('edQuestion').focus(); return; }
+  if (!A || !B || !C) { toast('Options A, B, C are required', 'err'); return; }
+  if (answer === 'D' && !D) { toast('Answer is D but option D is empty', 'err'); return; }
+
+  const row = [Number(set), section, question, passage, image, audio, answer, A, B, C, D];
+
+  let newQuestions;
+  if (editingIndex === -1) {
+    newQuestions = [...questions, row];
+  } else {
+    newQuestions = questions.map((r, i) => i === editingIndex ? row : r);
   }
 
-  updateButtons();
-});
+  $('saveBtn').disabled = true;
+  $('saveBtn').textContent = 'Saving…';
 
-/* DOWNLOAD BACKUP */
-$("backupBtn").addEventListener("click", () => {
-  if (!currentUser || !questions.length) return;
+  const ok = await saveQuestionsToFirestore(newQuestions);
 
-  const blob = new Blob(
-    [JSON.stringify({ questions }, null, 2)],
-    { type: "application/json" }
-  );
+  $('saveBtn').disabled = false;
+  $('saveBtn').textContent = editingIndex === -1 ? 'Add' : 'Update';
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "dream-japan-questions-backup.json";
-  a.click();
-  URL.revokeObjectURL(url);
+  if (ok) {
+    closeEditor();
+    renderList();
+    toast(editingIndex === -1 ? 'Question added ✓' : 'Question updated ✓', 'ok');
+  }
+}
+
+/* ==================================================================
+   DELETE
+   ================================================================== */
+function confirmDelete(idx) {
+  $('confirmTitle').textContent = 'Delete this question?';
+  $('confirmMsg').textContent = 'This will permanently remove question #' + (idx + 1) + ' from Firestore. This cannot be undone.';
+  $('confirmYes').onclick = async () => {
+    closeConfirm();
+    const newQuestions = questions.filter((_, i) => i !== idx);
+    const ok = await saveQuestionsToFirestore(newQuestions);
+    if (ok) {
+      renderList();
+      toast('Question deleted', 'ok');
+    }
+  };
+  $('confirmOverlay').classList.add('show');
+}
+
+function closeConfirm() {
+  $('confirmOverlay').classList.remove('show');
+}
+
+/* ==================================================================
+   PREVIEW
+   ================================================================== */
+function openPreview(idx) {
+  const r = questions[idx];
+  if (!r) return;
+  const set = r[0] || '?';
+  const secCode = String(r[1] || '').toLowerCase();
+  const secName = { sv: 'Script & Vocabulary', ce: 'Conversation & Expression',
+    lc: 'Listening Comprehension', rc: 'Reading Comprehension' }[secCode] || secCode;
+  const qt = r[2] || '';
+  const passage = r[3] || '';
+  const img = r[4] ? String(r[4]).trim() : '';
+  const aud = r[5] ? String(r[5]).trim() : '';
+  const answer = String(r[6] || 'A').toUpperCase();
+  const opts = [r[7], r[8], r[9], r[10]].map(x => String(x == null ? '' : x).trim());
+
+  const ansIdx = 'ABCD'.indexOf(answer);
+  const letters = 'ABCD';
+
+  let imgHtml = '';
+  if (img) {
+    if (img.startsWith('scene:')) {
+      // Use scene SVG generator from mock test
+      const kind = img.slice(6);
+      imgHtml = '<img src="' + sceneDataUrl(kind) + '" alt="scene" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Image failed to load</div>\')">';
+    } else {
+      imgHtml = '<img src="' + escAttr(img) + '" alt="question image" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Image failed to load: ' + escHtml(img) + '</div>\')">';
+    }
+  }
+
+  let audHtml = '';
+  if (aud) {
+    if (aud.startsWith('tts:')) {
+      audHtml = '<div style="padding:10px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:12px">🔊 TTS: ' + escHtml(aud.slice(4)) + '</div>';
+    } else {
+      audHtml = '<audio controls src="' + escAttr(aud) + '" onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<div class=&quot;empty&quot;>Audio failed to load</div>\')"></audio>';
+    }
+  }
+
+  let optsHtml = '';
+  opts.forEach((txt, i) => {
+    if (i === 3 && !txt) return; // skip empty D
+    const isCorrect = i === ansIdx;
+    optsHtml += '<div class="opt' + (isCorrect ? ' correct' : '') + '">' +
+      '<span class="ltr">' + letters[i] + '</span>' + escHtml(txt) +
+      (isCorrect ? ' ✓' : '') + '</div>';
+  });
+
+  $('previewContent').innerHTML =
+    '<h3>Question Preview</h3>' +
+    '<div class="pv-meta"><span>Set ' + set + '</span><span class="sec">' + escHtml(secName) + '</span><span>Answer: ' + answer + '</span></div>' +
+    (passage ? '<div class="passage">' + escHtml(passage) + '</div>' : '') +
+    imgHtml +
+    audHtml +
+    '<div class="qt">' + escHtml(qt) + '</div>' +
+    optsHtml +
+    '<button class="pv-close" onclick="document.getElementById(\'previewOverlay\').classList.remove(\'show\')">Close</button>';
+
+  $('previewOverlay').classList.add('show');
+}
+
+/* Scene SVG generator (same as mock test) */
+function sceneDataUrl(kind) {
+  const sky = { rain: '#7f94a8', sun: '#6ec1f2', snow: '#c8d6e5', cloud: '#9fb3c4' }[kind] || '#6ec1f2';
+  let x = '';
+  if (kind === 'sun') x = '<circle cx="300" cy="55" r="30" fill="#ffd23f"/>';
+  else x = '<ellipse cx="110" cy="52" rx="55" ry="22" fill="#fff" opacity=".88"/>' +
+    '<ellipse cx="255" cy="44" rx="60" ry="24" fill="#fff" opacity=".88"/>';
+  if (kind === 'rain') for (let i = 0; i < 24; i++)
+    x += `<line x1="${20 + i * 15}" y1="${90 + (i * 37) % 60}" x2="${14 + i * 15}" y2="${110 + (i * 37) % 60}" stroke="#d8ecff" stroke-width="2"/>`;
+  if (kind === 'snow') for (let i = 0; i < 22; i++)
+    x += `<circle cx="${15 + i * 16}" cy="${95 + (i * 53) % 90}" r="3" fill="#fff"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200">
+    <rect width="360" height="200" fill="${sky}"/>${x}
+    <rect y="165" width="360" height="35" fill="#5d8a4e"/>
+    <polygon points="170,165 215,95 260,165" fill="#c94536"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+/* ==================================================================
+   JSON IMPORT / EXPORT
+   ================================================================== */
+function openJsonModal(mode) {
+  if (mode === 'export') {
+    $('jsonTitle').textContent = 'Export JSON';
+    $('jsonArea').value = JSON.stringify({ questions }, null, 2);
+    $('jsonArea').readOnly = true;
+    $('jsonImportBtn').style.display = 'none';
+    $('jsonExportBtn').style.display = 'block';
+    $('jsonExportBtn').textContent = '📋 Copy to Clipboard';
+    $('jsonExportBtn').onclick = () => {
+      navigator.clipboard.writeText($('jsonArea').value)
+        .then(() => toast('JSON copied ✓', 'ok'))
+        .catch(() => toast('Copy failed', 'err'));
+    };
+  } else {
+    $('jsonTitle').textContent = 'Import JSON';
+    $('jsonArea').value = '';
+    $('jsonArea').readOnly = false;
+    $('jsonImportBtn').style.display = 'block';
+    $('jsonExportBtn').style.display = 'none';
+    $('jsonImportBtn').onclick = importJson;
+  }
+  $('jsonOverlay').classList.add('show');
+}
+
+function closeJsonModal() {
+  $('jsonOverlay').classList.remove('show');
+}
+
+async function importJson() {
+  const raw = $('jsonArea').value.trim();
+  if (!raw) { toast('Paste JSON first', 'err'); return; }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    toast('Invalid JSON: ' + e.message, 'err');
+    return;
+  }
+
+  // Accept { questions: [...] } or direct array
+  let newQuestions;
+  if (Array.isArray(parsed)) {
+    newQuestions = parsed;
+  } else if (Array.isArray(parsed.questions)) {
+    newQuestions = parsed.questions;
+  } else {
+    toast('JSON must contain a "questions" array or be an array', 'err');
+    return;
+  }
+
+  // Validate each row is an array with at least 11 elements
+  for (let i = 0; i < newQuestions.length; i++) {
+    const r = newQuestions[i];
+    if (!Array.isArray(r) || r.length < 11) {
+      toast('Invalid question at index ' + i + ': must be an array with 11 elements', 'err');
+      return;
+    }
+  }
+
+  $('confirmTitle').textContent = 'Import ' + newQuestions.length + ' questions?';
+  $('confirmMsg').textContent = 'This will REPLACE all existing questions in Firestore. Existing questions will be deleted.';
+  $('confirmYes').onclick = async () => {
+    closeConfirm();
+    const ok = await saveQuestionsToFirestore(newQuestions);
+    if (ok) {
+      closeJsonModal();
+      renderList();
+      toast('Imported ' + newQuestions.length + ' questions ✓', 'ok');
+    }
+  };
+  $('confirmOverlay').classList.add('show');
+}
+
+/* ==================================================================
+   HELPERS
+   ================================================================== */
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* Close overlays on backdrop click */
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', e => {
+    if (e.target === ov) ov.classList.remove('show');
+  });
 });
 </script>
 </body>
