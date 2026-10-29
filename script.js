@@ -1,5 +1,6 @@
 /* ============================================================
    Dream Japan — JFT Mock Test (3-file SPA)
+   v1.1.0 — Part 1 bug fixes
    ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -32,6 +33,7 @@ const MAX_PLAYS = 2;
 const PASS_PCT = 0.8;
 const EXAM_STATE_KEY = "dj_exam_state";
 const RESULT_KEY = "dj_result";
+const REDIRECT_AFTER_KEY = "dj_redirect_after";
 
 const SECTIONS = [
   { key:"sv", name:"Script & Vocabulary", short:"VOCAB", marks:3, icon:"📝" },
@@ -51,6 +53,9 @@ const db   = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
 
+// FIX #5 — stable per-tab identifier for exam lock
+const TAB_ID = `tab_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+
 /* ============ STATE ============ */
 const state = {
   user: null, profile: null, isAdmin: false,
@@ -59,9 +64,13 @@ const state = {
   exam: null, practice: null,
   bookmarks: [], leaderboard: [],
   _userSub: null, _tick: null, _audio: null,
+  _perfStart: 0, _perfLeftAtStart: 0, _timeupShown: false, _lockTick: null,
   _allStudents: null, _allQs: null,
   totalQ: 52, fullMarks: 250, passMarks: 200
 };
+
+// FIX #2 — prevents double popstate handling
+let _backHandling = false;
 
 /* ============ UTILS ============ */
 const $ = id => document.getElementById(id);
@@ -123,16 +132,61 @@ function sceneData(kind) {
 }
 const LOGO_SVG = `<svg viewBox="0 0 24 24"><path d="M12 4L20 19H4L12 4Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>`;
 
+/* ============ EXAM LOCK (FIX #5) ============ */
+function examLockKey(setIdx) { return `dj_exam_lock_${setIdx}`; }
+function readExamLock(setIdx) {
+  try {
+    const raw = localStorage.getItem(examLockKey(setIdx));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function isExamLockedByOther(setIdx) {
+  const lock = readExamLock(setIdx);
+  if (!lock) return false;
+  return lock.tab !== TAB_ID && (Date.now() - lock.ts) < 90000;
+}
+function acquireExamLock(setIdx) {
+  try {
+    localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID }));
+  } catch {}
+}
+function refreshExamLock(setIdx) {
+  try {
+    localStorage.setItem(examLockKey(setIdx), JSON.stringify({ ts: Date.now(), tab: TAB_ID }));
+  } catch {}
+}
+function releaseExamLock(setIdx) {
+  try {
+    const lock = readExamLock(setIdx);
+    if (lock && lock.tab === TAB_ID) localStorage.removeItem(examLockKey(setIdx));
+  } catch {}
+}
+
 /* ============ ROUTER ============ */
+// FIX #2 — single pushState per navigation; FIX #4 — stopAudio on every navigation
 function navigate(screen, params = {}) {
   const search = new URLSearchParams(params).toString();
   const hash = "#/" + screen + (search ? "?" + search : "");
   if (location.hash !== hash) history.pushState({ screen, params }, "", hash);
   state.screen = screen;
   state.params = params;
+  stopAudio();
   render();
   window.scrollTo(0, 0);
 }
+
+// FIX #2 — replace current history entry (used when leaving/completing exam)
+function replaceNavigate(screen, params = {}) {
+  const search = new URLSearchParams(params).toString();
+  const hash = "#/" + screen + (search ? "?" + search : "");
+  history.replaceState({ screen, params }, "", hash);
+  state.screen = screen;
+  state.params = params;
+  stopAudio();
+  render();
+  window.scrollTo(0, 0);
+}
+
 function parseHash() {
   const raw = location.hash || "#/home";
   const [screen, qs] = raw.slice(2).split("?");
@@ -140,33 +194,38 @@ function parseHash() {
   if (qs) new URLSearchParams(qs).forEach((v, k) => params[k] = v);
   return { screen: screen || "home", params };
 }
+
+// FIX #2 — single popstate; guarded against rapid double-fire
 window.addEventListener("popstate", () => {
   if (state.screen === "exam" && state.exam) {
-    history.pushState({ screen: "exam" }, "", "#/exam");
+    if (_backHandling) return;
+    _backHandling = true;
+    const search = new URLSearchParams(state.params || {}).toString();
+    const hash = "#/exam" + (search ? "?" + search : "");
+    history.pushState({ screen: "exam", params: state.params }, "", hash);
     askLeaveExam();
+    setTimeout(() => { _backHandling = false; }, 500);
     return;
   }
   const { screen, params } = parseHash();
   state.screen = screen;
   state.params = params;
+  stopAudio();
   render();
 });
-window.addEventListener("hashchange", () => {
-  if (state.screen === "exam" && state.exam) return;
-  const { screen, params } = parseHash();
-  if (state.screen === screen && JSON.stringify(state.params) === JSON.stringify(params)) return;
-  state.screen = screen;
-  state.params = params;
-  render();
-});
+// FIX #2 — removed hashchange listener (pushState doesn't fire it; nothing else uses it)
 
 /* ============ AUTH ============ */
+// FIX #9 — persist return hash before redirect
 async function signInGoogle() {
   try { await signInWithPopup(auth, provider); }
   catch (e) {
     if (["auth/popup-blocked","auth/popup-closed-by-user","auth/cancelled-popup-request",
          "auth/operation-not-supported-in-this-environment"].includes(e.code)) {
-      try { await signInWithRedirect(auth, provider); }
+      try {
+        sessionStorage.setItem(REDIRECT_AFTER_KEY, location.hash || "#/home");
+        await signInWithRedirect(auth, provider);
+      }
       catch (re) { toast(re.message, "err"); }
     } else { toast("Login failed: " + (e.code || e.message), "err"); }
   }
@@ -213,6 +272,8 @@ async function resetPassword(email) {
 }
 async function logout() {
   if (state._userSub) { state._userSub(); state._userSub = null; }
+  if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
+  stopAudio();
   await signOut(auth);
 }
 
@@ -431,13 +492,15 @@ async function toggleBookmark(setIdx, secKey, qi) {
 }
 
 /* ============ EXAM STATE PERSIST ============ */
+// FIX #10 — persist `locked` state so refresh keeps previous sections locked
 function saveExamState(ex) {
   try {
     sessionStorage.setItem(EXAM_STATE_KEY, JSON.stringify({
       setIdx: ex.setIdx, startedAt: ex.startedAt,
       si: ex.si, qi: ex.qi, left: ex.left, maxReachable: ex.maxReachable,
       answers: ex.sections.map(s => s.questions.map(q => q.sel === undefined ? null : q.sel)),
-      played: ex.sections.map(s => s.questions.map(q => q.played || 0))
+      played: ex.sections.map(s => s.questions.map(q => q.played || 0)),
+      locked: ex.sections.map(s => s.questions.map(q => !!q.locked))
     }));
   } catch {}
 }
@@ -460,6 +523,7 @@ function render() {
   const s = state.screen;
   let html = "";
 
+  // FIX #8 — never render any authed screen (or nav) when user is null
   if (!state.user) {
     if (s === "signup") html = renderSignup();
     else html = renderLogin();
@@ -499,6 +563,7 @@ function topbarHTML() {
       <span>${esc(p.name || state.user.email)}</span></button>
   </div></div>`;
 }
+// FIX #8 — explicit guard
 function bottomNavHTML(active) {
   if (!state.user) return "";
   const items = [
@@ -518,7 +583,6 @@ function renderLoading() {
 }
 
 function renderLogin() {
-  const nextParam = state.params.next || "";
   return `<div class="login-wrap"><div class="login-card">
     <div class="login-logo">${LOGO_SVG}</div>
     <h2>Dream Japan</h2>
@@ -699,7 +763,8 @@ function renderExam() {
       setTimeout(() => resumeExamFromSaved(saved), 0);
       return renderLoading();
     }
-    setTimeout(() => navigate("sets"), 10);
+    // FIX #2 — use replaceNavigate to avoid history loop
+    setTimeout(() => replaceNavigate("sets"), 10);
     return renderLoading();
   }
   const ex = state.exam;
@@ -737,9 +802,12 @@ function renderExam() {
     <div class="steps">${ex.sections.map((s, i) =>
       `<div class="step ${i === ex.si ? "cur" : i < ex.si ? "done" : ""}">${s.short}</div>`).join("")}</div>
     <div class="progress-bar"><i id="progressFill" style="width:${(ex.answeredCount / sec.questions.length) * 100}%"></i></div>
-    <div class="palette">${sec.questions.map((qq, i) =>
-      `<button class="pal-btn ${qq.sel !== undefined ? "ans" : ""} ${i === ex.qi ? "cur" : ""}"
-        ${i > ex.maxReachable ? "disabled" : ""} data-jump="${i}">${i + 1}</button>`).join("")}</div>
+    <div class="palette">${sec.questions.map((qq, i) => {
+      // FIX #10 — disable palette for locked OR unreachable questions
+      const disabled = i > ex.maxReachable || qq.locked;
+      return `<button class="pal-btn ${qq.sel !== undefined ? "ans" : ""} ${i === ex.qi ? "cur" : ""}"
+        ${disabled ? "disabled" : ""} data-jump="${i}">${i + 1}</button>`;
+    }).join("")}</div>
     <div class="q-card">
       <div class="q-meta">
         <span class="q-num">Q ${ex.qi + 1} of ${sec.questions.length}</span>
@@ -1088,7 +1156,6 @@ function adminSettingsHTML() {
 
 /* ============ POST-RENDER ============ */
 function postRender() {
-  // Universal data-go / data-nav
   document.querySelectorAll("[data-go]").forEach(el => {
     el.onclick = () => navigate(el.dataset.go);
   });
@@ -1102,7 +1169,6 @@ function postRender() {
     el.onclick = () => navigate("review", { filter: el.dataset.review });
   });
 
-  // Auth screens
   if (state.screen === "login" && !state.user) {
     $("gLogin").onclick = signInGoogle;
     $("emailLogin").onclick = () => {
@@ -1130,16 +1196,13 @@ function postRender() {
     };
   }
 
-  // Home
   const reqBtn = $("reqAccessBtn");
   if (reqBtn) reqBtn.onclick = requestAccess;
 
-  // Sets
   document.querySelectorAll("[data-set]").forEach(el => {
     el.onclick = () => navigate("start", { set: el.dataset.set });
   });
 
-  // Start
   const agree = $("agree"), startBtn = $("startBtn");
   if (agree && startBtn) {
     agree.onchange = () => { startBtn.disabled = !agree.checked; };
@@ -1151,10 +1214,8 @@ function postRender() {
   const reqAcc2 = $("reqAcc2");
   if (reqAcc2) reqAcc2.onclick = requestAccess;
 
-  // Exam
   if (state.screen === "exam" && state.exam) bindExamEvents();
 
-  // Result
   const shareBtn = $("shareBtn");
   if (shareBtn) shareBtn.onclick = shareResult;
   const retryBtn = $("retryBtn");
@@ -1170,21 +1231,17 @@ function postRender() {
     }, 100);
   }
 
-  // Profile
   const logoutBtn = $("logoutBtn");
   if (logoutBtn) logoutBtn.onclick = logout;
 
-  // Premium
   document.querySelectorAll("[data-plan]").forEach(el => {
     el.onclick = () => requestPremium(el.dataset.plan);
   });
 
-  // Practice
   document.querySelectorAll("[data-practice]").forEach(el => {
     el.onclick = () => startPractice(el.dataset.practice);
   });
 
-  // Bookmarks
   document.querySelectorAll("[data-rm-bm]").forEach(el => {
     el.onclick = async () => {
       const bms = [...(state.profile.bookmarks || [])];
@@ -1198,14 +1255,21 @@ function postRender() {
     };
   });
 
-  // Admin bindings
   if (state.screen === "admin" && state.isAdmin) bindAdminTab();
 }
 
 /* ============ EXAM ENGINE ============ */
-async function beginExam(setIdx) {
+// FIX #5 — warn if another tab has this set locked
+async function beginExam(setIdx, force = false) {
   const set = state.sets[setIdx];
   if (!set) return navigate("sets");
+  if (!force && isExamLockedByOther(setIdx)) {
+    modal("Another tab has this exam", "It looks like this exam is already open in another tab. Starting here may cause duplicate submissions.", [
+      { label: "Cancel", cls: "btn-ghost" },
+      { label: "Start Anyway", cls: "btn-primary", onClick: () => beginExam(setIdx, true) }
+    ]);
+    return;
+  }
   const sections = set.sections.map(s => ({
     ...s,
     questions: s.questions.map(q => ({ ...q, sel: undefined, locked: false, played: 0 }))
@@ -1216,21 +1280,23 @@ async function beginExam(setIdx) {
     answeredCount: 0, maxReachable: 0,
     startedAt: Date.now()
   };
+  acquireExamLock(setIdx);
   saveExamState(state.exam);
   startTimer();
   bumpStreak();
   navigate("exam");
 }
 
+// FIX #10 — restore locked flags from saved state
 function resumeExamFromSaved(saved) {
   const set = state.sets[saved.setIdx];
-  if (!set) { clearExamState(); navigate("sets"); return; }
+  if (!set) { clearExamState(); replaceNavigate("sets"); return; }
   const sections = set.sections.map((s, si) => ({
     ...s,
     questions: s.questions.map((q, qi) => ({
       ...q,
       sel: saved.answers?.[si]?.[qi] ?? undefined,
-      locked: false,
+      locked: !!(saved.locked?.[si]?.[qi]),
       played: saved.played?.[si]?.[qi] || 0
     }))
   }));
@@ -1243,33 +1309,47 @@ function resumeExamFromSaved(saved) {
     maxReachable: saved.maxReachable || 0,
     startedAt: saved.startedAt || Date.now()
   };
+  refreshExamLock(saved.setIdx);
   startTimer();
   render();
 }
 
+// FIX #1 — performance.now() for drift-free timing
+// FIX #5 — refresh lock every 15 sec while exam active
 function startTimer() {
   if (state._tick) clearInterval(state._tick);
-  state._tickStart = Date.now();
-  state._tickLeftAtStart = state.exam.left;
+  if (state._lockTick) clearInterval(state._lockTick);
+  state._perfStart = performance.now();
+  state._perfLeftAtStart = state.exam.left;
+  state._timeupShown = false;
   state._tick = setInterval(tick, 500);
+  state._lockTick = setInterval(() => {
+    if (state.exam) refreshExamLock(state.exam.setIdx);
+  }, 15000);
+  refreshExamLock(state.exam.setIdx);
 }
+
+// FIX #1 — derive remaining from performance clock (immune to setInterval drift)
 function tick() {
   const ex = state.exam;
   if (!ex) { clearInterval(state._tick); return; }
   if (ex.paused) {
-    state._tickStart = Date.now();
-    state._tickLeftAtStart = ex.left;
+    state._perfStart = performance.now();
+    state._perfLeftAtStart = ex.left;
     return;
   }
-  const elapsed = Math.floor((Date.now() - state._tickStart) / 1000);
-  ex.left = Math.max(0, state._tickLeftAtStart - elapsed);
+  const elapsedSec = (performance.now() - state._perfStart) / 1000;
+  ex.left = Math.max(0, state._perfLeftAtStart - elapsedSec);
   const el = $("timerDisplay");
   if (el) {
-    el.innerHTML = `⏱ <span>${pad(Math.floor(ex.left / 60))}:${pad(ex.left % 60)}</span>`;
+    const secs = Math.ceil(ex.left);
+    el.innerHTML = `⏱ <span>${pad(Math.floor(secs / 60))}:${pad(secs % 60)}</span>`;
     el.classList.toggle("low", ex.left <= 600);
   }
-  if (ex.left <= 0) {
+  if (ex.left <= 0 && !state._timeupShown) {
+    state._timeupShown = true;
     clearInterval(state._tick);
+    if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
     modal("Time is up!", "Submitting automatically…",
       [{ label: "View Results", cls: "btn-primary", onClick: finishExam }]);
   }
@@ -1312,9 +1392,15 @@ function selectOpt(i) {
   saveExamState(ex);
 }
 
+// FIX #10 — block jumping to locked or out-of-range questions
 function jumpTo(i) {
   const ex = state.exam;
-  if (!ex || i > ex.maxReachable) return;
+  if (!ex) return;
+  const sec = ex.sections[ex.si];
+  if (!sec) return;
+  if (i < 0 || i >= sec.questions.length) return;
+  if (i > ex.maxReachable) return;
+  if (sec.questions[i]?.locked) return;
   stopAudio();
   ex.qi = i;
   saveExamState(ex);
@@ -1363,6 +1449,8 @@ function finishSection() {
     ]);
 }
 
+// FIX #2 — replace history entry on leave (no history loop)
+// FIX #5 — release lock on leave
 function askLeaveExam() {
   if (!state.exam) return;
   state.exam.paused = true;
@@ -1372,19 +1460,26 @@ function askLeaveExam() {
       { label: "Stay", cls: "btn-ghost", onClick: () => { if (state.exam) state.exam.paused = false; } },
       { label: "Leave", cls: "btn-danger", onClick: () => {
         if (state._tick) clearInterval(state._tick);
+        if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
+        const setIdx = state.exam?.setIdx;
         state.exam = null;
         clearExamState();
-        navigate("sets");
+        if (setIdx !== undefined) releaseExamLock(setIdx);
+        replaceNavigate("sets");
       }}
     ]);
 }
 
+// FIX #3 — retry modal on offline submit
+// FIX #5 — release lock on submit
+// FIX #2 — replaceNavigate to avoid history loop
 async function finishExam() {
   if (state._tick) clearInterval(state._tick);
+  if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
   stopAudio();
   const ex = state.exam;
   if (!ex) return;
-  const used = EXAM_MIN * 60 - ex.left;
+  const used = Math.round(EXAM_MIN * 60 - ex.left);
 
   let score = 0, correct = 0, unanswered = 0;
   const sections = ex.sections.map(s => {
@@ -1404,6 +1499,7 @@ async function finishExam() {
 
   const wrong = state.totalQ - correct - unanswered;
   const percentage = Math.round(score / state.fullMarks * 100);
+  const attemptId = `attempt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const result = {
     setIdx: ex.set.idx, setName: ex.set.name,
     score, maxScore: state.fullMarks, percentage,
@@ -1412,24 +1508,50 @@ async function finishExam() {
     submittedAt: new Date().toISOString()
   };
 
-  try {
-    const attemptId = `attempt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await setDoc(doc(db, "users", state.user.uid, "results", attemptId), {
-      ...result, submittedAt: serverTimestamp()
-    });
-    if (percentage > (state.profile?.bestScore || 0)) {
-      await updateDoc(doc(db, "users", state.user.uid), { bestScore: percentage });
-    }
-    state.results.unshift({ ...result, id: attemptId });
-  } catch (e) {
-    console.error("Save result", e);
-    toast("Result saved locally only.", "err");
-  }
-
+  // Always save locally first (so result is never lost)
   saveResult(result);
   clearExamState();
+  const setIdx = ex.setIdx;
   state.exam = null;
-  navigate("result");
+  releaseExamLock(setIdx);
+
+  try {
+    await saveResultToDb(result, attemptId);
+    replaceNavigate("result");
+  } catch (e) {
+    console.error("Save result", e);
+    modal("Could not save to cloud",
+      "Your result is saved on this device. If you retry now and it succeeds, it will also appear in your history.",
+      [
+        { label: "Continue Offline", cls: "btn-ghost", onClick: () => replaceNavigate("result") },
+        { label: "Retry Upload", cls: "btn-primary", onClick: async () => {
+          try {
+            await saveResultToDb(result, attemptId);
+            toast("Uploaded ✓", "ok");
+            replaceNavigate("result");
+          } catch (e2) {
+            toast("Still offline — result kept locally", "err");
+            replaceNavigate("result");
+          }
+        }}
+      ]);
+  }
+}
+
+// FIX #3 — helper that can be retried without creating duplicate attemptId
+async function saveResultToDb(result, attemptId) {
+  if (!state.user) throw new Error("Not signed in");
+  await setDoc(doc(db, "users", state.user.uid, "results", attemptId), {
+    ...result, submittedAt: serverTimestamp()
+  });
+  if (result.percentage > (state.profile?.bestScore || 0)) {
+    await updateDoc(doc(db, "users", state.user.uid), { bestScore: result.percentage });
+    if (state.profile) state.profile.bestScore = result.percentage;
+  }
+  // Avoid duplicate in-memory entries on retry
+  if (!state.results.some(r => r.id === attemptId)) {
+    state.results.unshift({ ...result, id: attemptId });
+  }
 }
 
 function stopAudio() {
@@ -1551,7 +1673,7 @@ function renderPracticeScreen() {
   $("leaveBtn").onclick = () => {
     modal("Leave practice?", "Your progress will not be saved.",
       [{ label:"Stay", cls:"btn-ghost" },
-       { label:"Leave", cls:"btn-danger", onClick: () => { state.practice = null; navigate("practice"); } }]);
+       { label:"Leave", cls:"btn-danger", onClick: () => { stopAudio(); state.practice = null; navigate("practice"); } }]);
   };
   if ($("playBtn")) $("playBtn").onclick = () => playAudio(q);
 }
@@ -1610,7 +1732,8 @@ function bindAdminTab() {
   if (adminTab === "requests") loadRequests();
   if (adminTab === "questions") {
     $("qSearch").oninput = filterQuestions;
-    $("addQBtn").onclick = () => openQEditor(-1);
+    // FIX #6 — pass null for "add new" instead of index -1
+    $("addQBtn").onclick = () => openQEditor(null);
     $("refreshQ2").onclick = refreshQuestions;
     loadQs();
   }
@@ -1732,6 +1855,7 @@ function filterQuestions() {
     (r.question || "").toLowerCase().includes(q) || (r.passage || "").toLowerCase().includes(q));
   renderQRows(rows);
 }
+// FIX #6 — pass row object to openQEditor (was passing filtered index)
 function renderQRows(rows) {
   const list = $("questionsList");
   if (!list) return;
@@ -1756,15 +1880,15 @@ function renderQRows(rows) {
     b.onclick = () => {
       const row = rows[+b.dataset.i];
       if (b.dataset.qact === "preview") previewQ(row);
-      else if (b.dataset.qact === "edit") openQEditor(+b.dataset.i);
+      else if (b.dataset.qact === "edit") openQEditor(row);  // FIX #6: pass row, not index
       else if (b.dataset.qact === "del") deleteQ(row);
     };
   });
 }
-function openQEditor(idx) {
-  const isEdit = idx >= 0;
-  const row = isEdit ? (state._allQs || [])[idx] : null;
-  const r = row || { set:1, section:"sv", question:"", passage:"", image:"", audio:"", answer:"A", A:"", B:"", C:"", D:"" };
+// FIX #6 — accepts row object (or null for "add new")
+function openQEditor(rowOrNull) {
+  const isEdit = !!rowOrNull;
+  const r = rowOrNull || { set:1, section:"sv", question:"", passage:"", image:"", audio:"", answer:"A", A:"", B:"", C:"", D:"" };
   modal(isEdit ? "Edit Question" : "Add Question", `
     <div class="grid-2">
       <div class="field"><label>Set</label>
@@ -1789,10 +1913,11 @@ function openQEditor(idx) {
     </div>`,
     [
       { label: "Cancel", cls: "btn-ghost" },
-      { label: isEdit ? "Update" : "Add", cls: "btn-primary", onClick: () => saveQ(idx, isEdit, row) }
+      { label: isEdit ? "Update" : "Add", cls: "btn-primary", onClick: () => saveQ(rowOrNull, isEdit) }
     ]);
 }
-async function saveQ(idx, isEdit, origRow) {
+// FIX #6 — signature changed to (origRow, isEdit)
+async function saveQ(origRow, isEdit) {
   const newRow = {
     set: +$("qeSet").value, section: $("qeSec").value,
     question: $("qeQ").value.trim(), passage: $("qeP").value.trim(),
@@ -1809,8 +1934,11 @@ async function saveQ(idx, isEdit, origRow) {
     if (isEdit && origRow) {
       const gi = list.findIndex(r => r.set === origRow.set && r.section === origRow.section &&
         r.question === origRow.question && r.A === origRow.A);
-      if (gi >= 0) list[gi] = newRow; else list.push(newRow);
-    } else list.push(newRow);
+      if (gi >= 0) list[gi] = newRow;
+      else list.push(newRow);
+    } else {
+      list.push(newRow);
+    }
     await setDoc(doc(db, QUESTIONS_DOC), { questions: list });
     clearQCache(); setCache(list);
     state.sets = buildSets(list); recomputeTotals();
@@ -1962,6 +2090,7 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     state.user = null; state.profile = null; state.isAdmin = false;
     state.sets = []; state.results = []; state.plans = [];
+    if (state._lockTick) { clearInterval(state._lockTick); state._lockTick = null; }
     const { screen, params } = parseHash();
     if (screen === "login" || screen === "signup") {
       state.screen = screen; state.params = params; render();
@@ -1995,6 +2124,15 @@ onAuthStateChanged(auth, async (user) => {
       }
     });
 
+    // FIX #9 — restore redirect target saved before signInWithRedirect
+    const redirectTarget = sessionStorage.getItem(REDIRECT_AFTER_KEY);
+    if (redirectTarget) {
+      sessionStorage.removeItem(REDIRECT_AFTER_KEY);
+      if (location.hash !== redirectTarget) {
+        history.replaceState({}, "", redirectTarget);
+      }
+    }
+
     const { screen, params } = parseHash();
     if (screen === "loading" || screen === "login" || screen === "signup") {
       navigate(params.next || "home");
@@ -2004,7 +2142,7 @@ onAuthStateChanged(auth, async (user) => {
         state.screen = "exam";
         resumeExamFromSaved(saved);
       } else {
-        navigate("sets");
+        replaceNavigate("sets");
       }
     } else {
       state.screen = screen;
@@ -2019,10 +2157,11 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-/* Keyboard shortcuts for exam */
+// FIX #7 — keyboard shortcuts skip when modal is open
 window.addEventListener("keydown", (e) => {
   if (state.screen !== "exam") return;
   if (e.target.matches("input, textarea, select")) return;
+  if (document.querySelector(".overlay.show")) return;
   const k = e.key.toLowerCase();
   if (["a","b","c","d"].includes(k)) {
     const opt = document.querySelector(`[data-opt="${"abcd".indexOf(k)}"]`);
