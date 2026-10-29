@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Dream Japan — Sets</title>
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import {
+  requireAuth, renderLayout, loadQuestions, buildSets, totalsFor, toast
+} from "./js/core.js";
+
+const ctx = await requireAuth();
+if (ctx) {
+  const { profile, isAdmin } = ctx;
+  renderLayout(profile, "sets", isAdmin);
+  try {
+    const { rows } = await loadQuestions();
+    const sets = buildSets(rows);
+    const totals = totalsFor(sets);
+    renderSets(sets, totals);
+  } catch (e) {
+    document.getElementById("app").innerHTML = `<div class="wrap" style="padding:24px">
+      <div class="card"><p style="color:var(--red)">Failed to load questions: ${e.message}</p></div></div>`;
+  }
+}
+
+function renderSets(sets, totals) {
+  document.getElementById("app").innerHTML = `
+    <div class="wrap" style="padding-top:16px;padding-bottom:40px">
+      <button class="btn btn-ghost btn-sm mb-2" onclick="location.href='./home.html'">← Back</button>
+      <h2 class="mb-2">Choose a Set</h2>
+      ${sets.map((s, i) => `
+        <div class="set-card" data-i="${i}">
+          <div class="set-kana">${s.kana}</div>
+          <div class="set-info">
+            <small>SET ${s.idx}</small>
+            <h3>${s.name}</h3>
+            <em>${s.sections.reduce((a, sec) => a + sec.count, 0)} questions · 60 min · ${totals.passMarks} pass mark</em>
+          </div>
+          <div style="color:var(--purple);font-size:20px">→</div>
+        </div>`).join("")}
+    </div>`;
+  document.querySelectorAll("[data-i]").forEach(el => {
+    el.onclick = () => location.href = `./start.html?set=${el.dataset.i}`;
+  });
+}
+</script>
+</body>
+</html>
