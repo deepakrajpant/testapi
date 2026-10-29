@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Dream Japan — Exam</title>
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+<div id="examRoot"></div>
+<script type="module">
+import { requireAuth, renderLayout, qs, loadExamState, modal } from "./js/core.js";
+import { beginExam, resumeExam, setExamContext, setupBackGuard } from "./js/exam.js";
+
+const ctx = await requireAuth();
+if (ctx) {
+  const { user, profile, isAdmin } = ctx;
+  renderLayout(profile, "sets", isAdmin);
+  setExamContext(profile, user);
+  setupBackGuard();
+
+  const saved = loadExamState();
+  if (saved) {
+    modal("Resume exam?", "You have an exam in progress. Continue where you left off?",
+      [
+        { label: "Start Over", cls: "btn-ghost", onClick: () => {
+          import("./js/core.js").then(m => m.clearExamState());
+          const setIdx = +qs("set");
+          beginExam(setIdx >= 0 ? setIdx : 0);
+        }},
+        { label: "Resume", cls: "btn-primary", onClick: resumeExam }
+      ]);
+  } else {
+    const setIdx = +qs("set");
+    if (setIdx >= 0 && setIdx < 6) {
+      await beginExam(setIdx);
+    } else {
+      location.href = "./sets.html";
+    }
+  }
+}
+
+// Keyboard shortcuts
+window.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea, select")) return;
+  const k = e.key;
+  if (["a","b","c","d","A","B","C","D"].includes(k)) {
+    const i = "abcd".indexOf(k.toLowerCase());
+    const opt = document.querySelector(`[data-opt="${i}"]`);
+    if (opt) opt.click();
+  } else if (k === "ArrowRight") document.getElementById("nextBtn")?.click();
+  else if (k === "ArrowLeft") document.getElementById("prevBtn")?.click();
+});
+</script>
+</body>
+</html>
