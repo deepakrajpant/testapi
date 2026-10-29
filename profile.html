@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Dream Japan — Profile</title>
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import {
+  requireAuth, renderLayout, loadResults, daysLeft, fmtDate, esc, logout
+} from "./js/core.js";
+
+const ctx = await requireAuth();
+if (ctx) {
+  const { user, profile, isAdmin } = ctx;
+  renderLayout(profile, "profile", isAdmin);
+  const results = await loadResults(user.uid);
+  renderProfile(profile, results, isAdmin);
+}
+
+function renderProfile(p, results, isAdmin) {
+  const premActive = p.premium && daysLeft(p.premium.expiry) > 0;
+  const streak = (p.streak && p.streak.count) || 0;
+  const initial = (p.name || "U")[0].toUpperCase();
+  document.getElementById("app").innerHTML = `
+    <div class="wrap" style="padding-bottom:40px">
+      <div class="profile-header">
+        ${p.photoURL
+          ? `<img src="${esc(p.photoURL)}" class="profile-avatar" loading="lazy" alt="">`
+          : `<div class="profile-avatar">${initial}</div>`}
+        <h2>${esc(p.name || "Student")}</h2>
+        <p>${esc(p.email || "")}</p>
+        <div class="role-badge">${isAdmin ? "👑 Administrator" : premActive ? "⭐ Premium" : "Student"}</div>
+      </div>
+
+      <div class="grid-3 mt-2">
+        <div class="stat-card center"><div class="num">${results.length}</div><div class="lbl">Tests</div></div>
+        <div class="stat-card center"><div class="num">${streak}</div><div class="lbl">Streak</div></div>
+        <div class="stat-card center"><div class="num">${p.bestScore || 0}%</div><div class="lbl">Best</div></div>
+      </div>
+
+      <div class="card mt-2">
+        <h3 class="mb-2">Account Status</h3>
+        <div class="flex-between" style="padding:8px 0"><span class="muted small">Account</span>
+          <span class="badge ${p.status === "blocked" ? "badge-danger" : "badge-success"}">${p.status === "blocked" ? "Blocked" : "Active"}</span></div>
+        <div class="flex-between" style="padding:8px 0;border-top:1px solid var(--border)">
+          <span class="muted small">Practice Access</span>
+          <span class="badge ${p.practiceAccess ? "badge-success" : "badge-muted"}">${p.practiceAccess ? "Granted" : "Not granted"}</span></div>
+        <div class="flex-between" style="padding:8px 0;border-top:1px solid var(--border)">
+          <span class="muted small">Premium</span>
+          <span class="badge ${premActive ? "badge-prem" : "badge-muted"}">${premActive ? `${esc(p.premium.plan)} · ${daysLeft(p.premium.expiry)}d` : "Inactive"}</span></div>
+        <div class="flex-between" style="padding:8px 0;border-top:1px solid var(--border)">
+          <span class="muted small">Member Since</span>
+          <span style="font-size:12px;font-weight:700">${fmtDate(p.createdAt)}</span></div>
+      </div>
+
+      ${isAdmin ? `<button class="btn btn-primary btn-block mt-2" onclick="location.href='./admin.html'">⚙ Open Admin Dashboard</button>` : ""}
+      <button class="btn btn-ghost btn-block mt-1" onclick="location.href='./bookmarks.html'">🔖 My Bookmarks (${(p.bookmarks || []).length})</button>
+      <button class="btn btn-ghost btn-block mt-1" onclick="location.href='./leaderboard.html'">🏆 Leaderboard</button>
+      <button class="btn btn-ghost btn-block mt-1" onclick="location.href='./premium.html'">View Premium Plans</button>
+      <button class="btn btn-danger btn-block mt-1" id="logoutBtn">Logout</button>
+    </div>`;
+  document.getElementById("logoutBtn").onclick = logout;
+}
+</script>
+</body>
+</html>
