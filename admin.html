@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Dream Japan — Admin</title>
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { requireAuth, renderLayout, loadQuestions, buildSets, setCache } from "./js/core.js";
+import { renderAdmin, setAdminContext, setSetsRebuilder } from "./js/admin.js";
+
+const ctx = await requireAuth({ adminOnly: true });
+if (ctx) {
+  const { user, profile, isAdmin } = ctx;
+  renderLayout(profile, "profile", isAdmin);
+  setAdminContext(ctx);
+  setSetsRebuilder((rows) => {
+    // nothing persistent needed; sets are rebuilt on demand
+    setCache(rows);
+  });
+  const app = document.getElementById("app");
+  app.id = "adminRoot"; // ensure admin.js can find it
+  renderAdmin(app);
+}
+</script>
+</body>
+</html>
