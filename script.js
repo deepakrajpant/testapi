@@ -962,9 +962,9 @@ function renderExam() {
       <b>Set ${ex.set.idx} · ${esc(ex.set.name)}</b>
       <span>Section ${ex.si + 1} of 4 — ${esc(sec.name)}</span>
     </div>
-    <div class="timer ${ex.left <= 600 ? "low" : ""}" id="timerDisplay">
-      ⏱ <span>${pad(Math.floor(ex.left / 60))}:${pad(ex.left % 60)}</span></div>
-  </div></div>
+<div class="timer ${ex.left <= 600 ? "low" : ""}" id="timerDisplay">
+  ⏱ <span>${pad(Math.floor(Math.ceil(ex.left) / 60))}:${pad(Math.ceil(ex.left) % 60)}</span>
+</div>
   <div class="wrap" style="padding-bottom:40px">
     <div class="steps">${ex.sections.map((s, i) =>
       `<div class="step ${i === ex.si ? "cur" : i < ex.si ? "done" : ""}">${s.short}</div>`).join("")}</div>
