@@ -43,15 +43,15 @@ const RESULT_KEY = "dj_result";
 const REDIRECT_AFTER_KEY = "dj_redirect_after";
 
 const SECTIONS = [
-  { key:"sv", name:"Script & Vocabulary", short:"VOCAB", marks:3, icon:"📝" },
-  { key:"ce", name:"Conversation & Expression", short:"CONV", marks:4, icon:"💬" },
-  { key:"lc", name:"Listening Comprehension", short:"LISTEN", marks:6, icon:"🎧" },
-  { key:"rc", name:"Reading Comprehension", short:"READ", marks:7, icon:"📖" }
+  { key:"sv", name:"Script & Vocabulary", short:"Script & Vocabulary", marks:3, icon:"📝" },
+  { key:"ce", name:"Conversation & Expression", short:"Conversation & Expression", marks:4, icon:"💬" },
+  { key:"lc", name:"Listening Comprehension", short:"Listening Comprehension", marks:6, icon:"🎧" },
+  { key:"rc", name:"Reading Comprehension", short:"Reading Comprehension", marks:7, icon:"📖" }
 ];
 const SET_NAMES = [
-  { name:"SHIMEMASU", kana:"し" },{ name:"HARE", kana:"は" },
-  { name:"GAKUSEI", kana:"が" },{ name:"ORIMASU", kana:"お" },
-  { name:"PONPYUTA", kana:"ぽ" },{ name:"MAGARIMASU", kana:"ま" }
+  { name:"SHIMEMASU", kana:"1" },{ name:"HARE", kana:"2" },
+  { name:"GAKUSEI", kana:"3" },{ name:"ORIMASU", kana:"4" },
+  { name:"PONPYUTA", kana:"5" },{ name:"MAGARIMASU", kana:"6" }
 ];
 
 const app  = initializeApp(FIREBASE_CONFIG);
