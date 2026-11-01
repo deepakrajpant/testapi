@@ -51,7 +51,7 @@ const SECTIONS = [
 const SET_NAMES = [
   { name:"SHIMEMASU", kana:"1" },{ name:"HARE", kana:"2" },
   { name:"GAKUSEI", kana:"3" },{ name:"ORIMASU", kana:"4" },
-  { name:"kONPYUTA", kana:"5" },{ name:"MAGARIMASU", kana:"6" }
+  { name:"KONPYUTA", kana:"5" },{ name:"MAGARIMASU", kana:"6" }
 ];
 
 const app  = initializeApp(FIREBASE_CONFIG);
