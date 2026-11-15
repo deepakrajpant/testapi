@@ -1,1160 +1,168 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>Sajilo GK · Learn clearly. Remember longer.</title>
-<style>
-:root{
-  --bg:#f7f8fc;--ink:#172033;--muted:#526079;--line:#dce2ed;
-  --blue:#2457d6;--purple:#7040c8;--pink:#be2872;--soft:#edf2ff;
-  --radius:18px;--shadow:0 16px 42px #25345d0c;
-  --surface:#fff;--danger:#b91c1c;--success:#15803d;
-}
-[data-theme="dark"]{
-  --bg:#101522;--ink:#f1f4ff;--muted:#b9c4db;--line:#2a354a;
-  --blue:#6d8cff;--purple:#a78bfa;--pink:#f472b6;--soft:#1e2a44;
-  --surface:#1b2435;--shadow:0 16px 42px #00000040;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font:15px/1.7 Inter,'Noto Sans Devanagari',Mukta,system-ui,sans-serif;
-  transition:background .2s,color .2s}
-a{color:var(--blue);text-decoration:none}
-button{font:inherit;cursor:pointer}
-[hidden]{display:none!important}
-.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;
-  gap:10px;padding:12px 18px;background:var(--surface);border-bottom:1px solid var(--line)}
-.logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
-  color:#fff;font-weight:800;font-size:22px;flex-shrink:0;
-  background:linear-gradient(130deg,var(--blue),var(--purple),var(--pink))}
-.topbar .brand{font-weight:700;font-size:16px;line-height:1.2}
-.topbar .brand small{display:block;font-size:10px;color:var(--muted);font-weight:400}
-.topbar .spacer{flex:1}
-.iconbtn{width:42px;height:42px;border:1px solid var(--line);border-radius:12px;
-  background:var(--surface);color:var(--ink);display:grid;place-items:center;font-size:18px}
-.avatar{width:34px;height:34px;border-radius:50%;background:var(--soft);
-  color:var(--purple);display:grid;place-items:center;font-weight:700;border:1px solid var(--line)}
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
-  z-index:200;background:var(--ink);color:var(--bg);padding:12px 18px;
-  border-radius:12px;font-size:13px;max-width:90vw;box-shadow:var(--shadow)}
-.btn{display:inline-flex;align-items:center;justify-content:center;
-  min-height:46px;padding:10px 16px;border-radius:12px;border:1px solid var(--line);
-  background:var(--surface);color:var(--ink);font-weight:600;font-size:13px;
-  line-height:1.45;text-align:center;transition:background .15s,border-color .15s}
-.btn:hover{background:var(--soft)}
-.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
-.btn.primary:hover{filter:brightness(1.08)}
-.btn.ghost{border-color:transparent;background:transparent;color:var(--blue)}
-.btn.danger{border-color:#fecaca;color:var(--danger);background:#fef2f2}
-.btn.small{min-height:36px;padding:6px 12px;font-size:12px;border-radius:9px}
-.btn.block{display:flex;width:100%}
-.field{margin:12px 0}
-.field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
-.field input,.field select,.field textarea{width:100%;min-height:46px;
-  border:1px solid var(--line);border-radius:10px;padding:10px 12px;
-  background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
-.field textarea{min-height:110px;resize:vertical}
-.field .hint{font-size:10px;color:var(--muted);margin-top:4px}
-.err{color:var(--danger);font-size:11px;margin-top:4px}
-.card{background:var(--surface);border:1px solid var(--line);
-  border-radius:var(--radius);padding:18px;margin:12px 0}
-.card.compact{padding:13px 15px}
-.grid{display:grid;gap:12px}
-.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-.row{display:flex;align-items:center;gap:10px}
-.row.between{justify-content:space-between}
-.stack{display:flex;flex-direction:column;gap:10px}
-.muted{color:var(--muted)}
-.small{font-size:12px}
-.micro{font-size:10px;line-height:1.7}
-.tag{display:inline-flex;align-items:center;font-size:10px;padding:5px 9px;
-  border-radius:20px;background:#f0f3f9;color:var(--muted);white-space:nowrap}
-.tag.active{background:var(--soft);color:var(--blue);font-weight:700}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-.prog{height:5px;background:var(--soft);border-radius:10px;overflow:hidden;margin:8px 0}
-.prog span{display:block;height:100%;background:var(--blue);transition:width .3s}
-.hero{padding:22px;border-radius:20px;color:#fff;margin:14px 0;
-  background:linear-gradient(125deg,var(--blue),var(--purple) 72%,var(--pink))}
-.hero h2{margin:6px 0;font-size:22px;line-height:1.3}
-.hero p{margin:0;color:#e7eaff;font-size:12px}
-.empty{text-align:center;padding:28px 16px;color:var(--muted)}
-.empty .icon{font-size:56px;margin-bottom:8px;color:var(--purple)}
-.bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;
-  display:grid;grid-template-columns:repeat(5,1fr);
-  background:var(--surface);border-top:1px solid var(--line);
-  padding:8px 4px max(10px,env(safe-area-inset-bottom))}
-.bottomnav button{background:none;border:0;display:grid;justify-items:center;
-  gap:2px;font-size:9px;color:var(--muted);padding:4px}
-.bottomnav button b{font-size:20px;font-weight:500;line-height:1.2}
-.bottomnav button.active{color:var(--blue);font-weight:700}
-.page{max-width:520px;margin:auto;padding:18px}
-.listrow{display:flex;justify-content:space-between;align-items:center;
-  gap:10px;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer}
-.listrow:last-child{border-bottom:0}
-.listrow strong{display:block;font-size:13px}
-.listrow small{display:block;color:var(--muted);font-size:11px}
-.listrow .arrow{color:var(--blue);font-size:18px}
-.auth-wrap{max-width:420px;margin:6vh auto;padding:22px}
-.auth-logo{width:70px;height:70px;border-radius:20px;margin:0 auto 22px;
-  display:grid;place-items:center;color:#fff;font-size:44px;font-weight:800;
-  background:linear-gradient(130deg,var(--blue),var(--purple),var(--pink))}
-.auth-wrap h1{font-size:30px;line-height:1.2;margin:0 0 6px;text-align:center}
-.auth-wrap .sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:22px}
-.level-switch{display:grid;grid-template-columns:repeat(3,1fr);
-  background:var(--soft);padding:4px;border-radius:12px;margin:14px 0;
-  font-size:10px;text-align:center}
-.level-switch button{background:none;border:0;padding:10px 4px;border-radius:9px;
-  color:var(--muted);font-size:11px}
-.level-switch button.on{background:var(--surface);color:var(--blue);
-  font-weight:700;box-shadow:0 2px 5px #1720330c}
-.reader{max-width:720px;margin:auto;padding:18px}
-.reader .content{font-size:16px;line-height:1.9}
-.memory{background:var(--soft);border-left:3px solid var(--purple);
-  padding:14px;border-radius:10px;margin:16px 0;font-size:13px}
-.media-block{margin:16px 0}
-.media-block img{max-width:100%;border-radius:12px}
-.media-block iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:12px}
-.media-block audio{width:100%}
-.reader-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
-  margin:18px 0;font-size:10px}
-.reader-actions button{background:var(--surface);border:1px solid var(--line);
-  padding:9px 4px;border-radius:8px;color:var(--muted);text-align:center}
-.answer{min-height:52px;border:1px solid var(--line);border-radius:12px;
-  display:flex;gap:12px;align-items:center;padding:12px;background:var(--surface);
-  margin:10px 0;font-size:14px;width:100%;text-align:left}
-.answer span:first-child{width:26px;height:26px;border-radius:8px;
-  background:var(--soft);display:grid;place-items:center;font-size:12px;
-  font-weight:600;flex-shrink:0}
-.answer.sel{border-color:var(--blue);background:var(--soft)}
-.answer.correct{border-color:var(--success);background:#ecfdf3}
-.answer.wrong{border-color:var(--danger);background:#fef2f2}
-.admin-shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
-.admin-side{background:var(--surface);border-right:1px solid var(--line);padding:18px}
-.admin-side .nav-item{display:block;width:100%;text-align:left;padding:10px 12px;
-  border-radius:9px;border:0;background:none;color:var(--muted);
-  font-size:13px;margin-bottom:4px}
-.admin-side .nav-item.active{background:var(--soft);color:var(--blue);font-weight:700}
-.admin-main{padding:22px;max-width:1100px}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="description" content="Sajilo GK — Smart Loksewa Preparation Made Simple." />
+  <title>Sajilo GK — Smart Loksewa Preparation</title>
 
-/* Boot / loading states */
-#boot-loading{position:fixed;inset:0;z-index:900;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
-#boot-loading .spin{width:44px;height:44px;border-radius:50%;
-  border:4px solid var(--line);border-top-color:var(--blue);
-  animation:spin 1s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-#boot-error{position:fixed;top:0;left:0;right:0;z-index:999;
-  background:#fee2e2;color:#991b1b;padding:14px 18px;font:13px/1.5 system-ui;
-  border-bottom:2px solid #fca5a5;white-space:pre-wrap;max-height:60vh;overflow:auto}
-#boot-error b{display:block;margin-bottom:6px;font-size:14px}
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-@media(max-width:700px){
-  .admin-shell{grid-template-columns:1fr}
-  .admin-side{display:flex;gap:6px;overflow-x:auto;border-right:0;
-    border-bottom:1px solid var(--line);padding:10px}
-  .admin-side .nav-item{white-space:nowrap;margin:0}
-  .grid.two,.grid.three{grid-template-columns:1fr}
-  .auth-wrap{margin:3vh auto}
-}
-</style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
-<!-- BOOT ERROR BANNER -->
-<div id="boot-error" hidden></div>
-
-<!-- BOOT LOADING -->
-<div id="boot-loading">
-  <div class="logo" style="width:60px;height:60px;font-size:36px;border-radius:16px">S</div>
-  <div class="spin"></div>
-  <p class="muted small">Starting Sajilo GK…</p>
-</div>
-
-<noscript>
-  <div style="padding:24px;background:#fef3c7;color:#92400e;font:14px system-ui;text-align:center">
-    ⚠️ JavaScript is disabled. Please enable JavaScript to use Sajilo GK.
+  <div id="bootScreen" class="boot-screen">
+    <div class="boot-logo">Sajilo<span>GK</span></div>
+    <div class="boot-tagline">Smart Loksewa Preparation Made Simple</div>
+    <div class="boot-spinner" aria-label="Loading"></div>
+    <p id="bootMessage" class="boot-message">Connecting to your study space…</p>
   </div>
-</noscript>
 
-<!-- ============ AUTH (VISIBLE BY DEFAULT) ============ -->
-<section id="view-auth" class="auth-wrap">
-  <div class="auth-logo">S</div>
-  <h1>तयारी सजिलो।<br>सम्झना बलियो।</h1>
-  <p class="sub">Smart Loksewa Preparation Made Simple</p>
-  <div id="auth-forms">
-    <!-- LOGIN -->
-    <form id="form-login" class="stack">
-      <div class="field"><label>Email</label>
-        <input type="email" id="login-email" autocomplete="email" required placeholder="you@example.com"></div>
-      <div class="field"><label>Password</label>
-        <input type="password" id="login-pass" autocomplete="current-password" required minlength="6" placeholder="••••••••"></div>
-      <p id="login-err" class="err" hidden></p>
-      <button class="btn primary block" type="submit" id="login-btn">Sign in</button>
-      <button class="btn block" type="button" id="btn-google-login">Continue with Google</button>
-      <p class="small muted" style="text-align:center">New here? <a href="#" id="to-signup"><b>Create an account</b></a></p>
-    </form>
-    <!-- SIGNUP -->
-    <form id="form-signup" class="stack" hidden>
-      <div class="field"><label>Full name</label>
-        <input type="text" id="su-name" required placeholder="Your name"></div>
-      <div class="field"><label>Email</label>
-        <input type="email" id="su-email" autocomplete="email" required placeholder="you@example.com"></div>
-      <div class="field"><label>Password</label>
-        <input type="password" id="su-pass" autocomplete="new-password" required minlength="6" placeholder="At least 6 characters"></div>
-      <p id="signup-err" class="err" hidden></p>
-      <button class="btn primary block" type="submit" id="signup-btn">Create account</button>
-      <button class="btn block" type="button" id="btn-google-signup">Continue with Google</button>
-      <p class="small muted" style="text-align:center">Already registered? <a href="#" id="to-login"><b>Sign in</b></a></p>
-    </form>
+  <!-- ================= AUTH ================= -->
+  <section id="authView" class="auth-view hidden" aria-labelledby="authHeading">
+    <div class="auth-hero">
+      <div class="auth-brand">
+        <div class="brand-mark">SG</div>
+        <div>
+          <h1 class="auth-logo">Sajilo<span>GK</span></h1>
+          <p class="auth-tagline">Smart Loksewa Preparation Made Simple.</p>
+        </div>
+      </div>
+      <h2 id="authHeading" class="auth-hero-title">Understand. Remember. Practise. Revise. Measure.</h2>
+      <p class="auth-hero-text">
+        Level-based study notes, active recall practice, spaced revision, timed tests and honest progress —
+        built for Nepali Loksewa aspirants.
+      </p>
+      <ul class="auth-features">
+        <li>Three levels: Basic, Medium and Advanced</li>
+        <li>Nepali and English study materials</li>
+        <li>Flashcards, revision scheduling and mock tests</li>
+        <li>Real progress, not fake statistics</li>
+      </ul>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-tabs" role="tablist" aria-label="Authentication">
+        <button class="auth-tab active" data-auth-tab="login" role="tab" aria-selected="true">Login</button>
+        <button class="auth-tab" data-auth-tab="signup" role="tab" aria-selected="false">Sign up</button>
+        <button class="auth-tab" data-auth-tab="reset" role="tab" aria-selected="false">Reset</button>
+      </div>
+
+      <form id="loginForm" class="auth-form" autocomplete="on">
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Your password" />
+        <button type="submit" class="btn btn-primary btn-block">Login</button>
+      </form>
+
+      <form id="signupForm" class="auth-form hidden" autocomplete="on">
+        <label for="signupName">Full name</label>
+        <input id="signupName" type="text" autocomplete="name" required maxlength="80" placeholder="Your name" />
+        <label for="signupEmail">Email</label>
+        <input id="signupEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+        <label for="signupPassword">Password</label>
+        <input id="signupPassword" type="password" autocomplete="new-password" required minlength="6" placeholder="At least 6 characters" />
+        <button type="submit" class="btn btn-primary btn-block">Create account</button>
+        <p class="form-note">You will receive a verification email. Verify it to unlock learning content.</p>
+      </form>
+
+      <form id="resetForm" class="auth-form hidden" autocomplete="on">
+        <label for="resetEmail">Email</label>
+        <input id="resetEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+        <button type="submit" class="btn btn-primary btn-block">Send reset link</button>
+        <p class="form-note">Check your inbox and spam folder.</p>
+      </form>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <button id="googleBtn" type="button" class="btn btn-google btn-block">
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.3 0 10.1-2 13.7-5.3l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.4l6.3 5.3C41.1 35.4 44 30.1 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>
+        Continue with Google
+      </button>
+
+      <div id="authMessage" class="auth-message" role="alert" aria-live="polite"></div>
+      <p class="auth-legal">By continuing you agree to use this platform honestly for personal study.</p>
+    </div>
+  </section>
+
+  <!-- ================= APP SHELL ================= -->
+  <div id="appShell" class="app-shell hidden">
+    <header id="topbar" class="topbar">
+      <button id="menuToggle" class="icon-btn menu-toggle" aria-label="Open navigation" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+
+      <a href="#/home" class="brand" aria-label="Sajilo GK home">
+        <span class="brand-mark small">SG</span>
+        <span class="brand-text">Sajilo<span>GK</span></span>
+      </a>
+
+      <div class="topbar-actions">
+        <button id="adminHeaderBtn" class="btn btn-admin hidden" type="button">Admin</button>
+        <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle dark mode">◐</button>
+        <div class="profile-menu">
+          <button id="profileBtn" class="profile-chip" type="button" aria-haspopup="true" aria-expanded="false">
+            <span id="avatarInitial" class="avatar">S</span>
+            <span id="profileChipName" class="profile-chip-name">Student</span>
+          </button>
+          <div id="profileDropdown" class="profile-dropdown hidden">
+            <a href="#/profile" data-nav>Profile</a>
+            <a href="#/planner" data-nav>Study planner</a>
+            <a href="#/settings" data-nav>Settings</a>
+            <a href="#/saved" data-nav>Saved items</a>
+            <button id="logoutBtn" class="dropdown-logout" type="button">Logout</button>
+          </div>
+        </div>
+        <button id="mobileLogoutBtn" class="icon-btn mobile-logout" type="button" aria-label="Logout" title="Logout">⏻</button>
+      </div>
+    </header>
+
+    <div id="verifyBanner" class="verify-banner hidden" role="alert">
+      <span>Please verify your email to unlock all learning features.</span>
+      <button id="resendVerifyBtn" class="btn btn-small" type="button">Resend</button>
+      <button id="refreshVerifyBtn" class="btn btn-small btn-primary" type="button">I have verified</button>
+    </div>
+
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+      <nav class="side-nav">
+        <a href="#/home" data-nav class="side-link">🏠 <span>Home</span></a>
+        <a href="#/subjects" data-nav class="side-link">📚 <span>My Subjects</span></a>
+        <a href="#/revision" data-nav class="side-link">🔁 <span>Revision</span></a>
+        <a href="#/tests" data-nav class="side-link">📝 <span>Tests</span></a>
+        <a href="#/saved" data-nav class="side-link">🔖 <span>Saved</span></a>
+        <a href="#/progress" data-nav class="side-link">📈 <span>Progress</span></a>
+        <a href="#/planner" data-nav class="side-link">🗓️ <span>Planner</span></a>
+        <a href="#/current-affairs" data-nav class="side-link">📰 <span>Current Affairs</span></a>
+      </nav>
+      <div class="side-footer">
+        <button id="sidebarLogoutBtn" class="btn btn-ghost btn-block" type="button">Logout</button>
+      </div>
+    </aside>
+
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden"></div>
+
+    <main id="app" class="app-main" tabindex="-1"></main>
+
+    <nav class="bottom-nav" aria-label="Mobile navigation">
+      <a href="#/home" data-nav class="bottom-link">🏠<span>Home</span></a>
+      <a href="#/subjects" data-nav class="bottom-link">📚<span>Subjects</span></a>
+      <a href="#/revision" data-nav class="bottom-link">🔁<span>Revision</span></a>
+      <a href="#/tests" data-nav class="bottom-link">📝<span>Tests</span></a>
+      <a href="#/saved" data-nav class="bottom-link">🔖<span>Saved</span></a>
+    </nav>
   </div>
-</section>
 
-<!-- ============ ONBOARDING ============ -->
-<section id="view-onboarding" class="page" hidden>
-  <div class="row" style="gap:5px">
-    <i id="dot1" style="flex:1;height:4px;border-radius:3px;background:var(--blue)"></i>
-    <i id="dot2" style="flex:1;height:4px;border-radius:3px;background:var(--line)"></i>
-  </div>
-  <h2 id="onb-title">कुन परीक्षाको तयारी गर्दै हुनुहुन्छ?</h2>
-  <p class="muted" id="onb-sub">Choose one or more. You can change these later.</p>
-  <div id="onb-exams" class="stack"></div>
-  <div id="onb-subjects-wrap" hidden>
-    <h2>Choose what you want to learn.</h2>
-    <p class="muted">Selected subjects appear in My Subjects.</p>
-    <div id="onb-subjects" class="stack"></div>
-  </div>
-  <button class="btn primary block" id="onb-continue" style="margin-top:18px">Continue →</button>
-  <button class="btn ghost block" id="onb-back" hidden>← Back</button>
-</section>
+  <div id="modalRoot" class="modal-root" aria-hidden="true"></div>
+  <div id="toastRoot" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 
-<!-- ============ MAIN APP ============ -->
-<div id="view-app" hidden>
-  <header class="topbar">
-    <div class="logo">S</div>
-    <div class="brand">Sajilo GK<small>Your preparation, at a glance</small></div>
-    <div class="spacer"></div>
-    <button class="iconbtn" id="btn-theme" title="Toggle theme">◐</button>
-    <button class="avatar" id="btn-profile" title="Profile & settings">D</button>
-  </header>
-  <main id="app-main" class="page"></main>
-  <nav class="bottomnav" id="bottomnav">
-    <button data-route="home" class="active"><b>⌂</b>Home</button>
-    <button data-route="subjects"><b>▤</b>My Subjects</button>
-    <button data-route="revision"><b>↻</b>Revision</button>
-    <button data-route="tests"><b>✓</b>Tests</button>
-    <button data-route="saved"><b>◇</b>Saved</button>
-  </nav>
-</div>
+  <noscript>
+    <div class="noscript">Sajilo GK requires JavaScript. Please enable JavaScript in your browser.</div>
+  </noscript>
 
-<!-- ============ ADMIN ============ -->
-<div id="view-admin" class="admin-shell" hidden>
-  <aside class="admin-side">
-    <div class="logo" style="margin-bottom:14px">S</div>
-    <button class="nav-item active" data-admin="overview">Overview</button>
-    <button class="nav-item" data-admin="exams">Examinations</button>
-    <button class="nav-item" data-admin="subjects">Subjects</button>
-    <button class="nav-item" data-admin="chapters">Chapters & Topics</button>
-    <button class="nav-item" data-admin="materials">Study Materials</button>
-    <button class="nav-item" data-admin="questions">Questions</button>
-    <button class="nav-item" data-admin="reports">Reports</button>
-    <button class="nav-item" data-admin="settings">Settings</button>
-    <button class="nav-item" id="admin-exit" style="color:var(--danger)">← Back to app</button>
-  </aside>
-  <section class="admin-main" id="admin-main"></section>
-</div>
-
-<!-- ============ EARLY ERROR HOOK (runs before module) ============ -->
-<script>
-(function(){
-  const errBox = document.getElementById('boot-error');
-  function showError(msg){
-    if(!errBox) return;
-    errBox.hidden = false;
-    errBox.innerHTML = '<b>⚠️ App error</b>' + String(msg).replace(/</g,'&lt;');
-  }
-  window.addEventListener('error', e => showError(e.message || 'Unknown error'));
-  window.addEventListener('unhandledrejection', e => {
-    const r = e.reason;
-    showError((r && (r.message || r.code)) || String(r));
-  });
-  // 8-second timeout: if module never runs, show helpful message
-  setTimeout(() => {
-    if(!window.__sajilo_booted){
-      showError(
-        'App did not start after 8 seconds.\n' +
-        'Possible reasons:\n' +
-        '1. Page opened via file:// — must use https:// (GitHub Pages URL).\n' +
-        '2. Firebase SDK blocked by browser / network.\n' +
-        '3. Your domain is not authorized in Firebase Console.\n\n' +
-        'Open F12 → Console to see the exact error.'
-      );
-    }
-  }, 8000);
-  window.__showError = showError;
-})();
-</script>
-
-<!-- ============ MAIN APP MODULE ============ -->
-<script type="module">
-/* ---- Firebase imports (v10 modular) ---- */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-  getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
-  signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider,
-  signOut, updateProfile
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection,
-  getDocs, query, where, limit, addDoc, serverTimestamp,
-  arrayUnion, arrayRemove
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-/* ---- Config ---- */
-const firebaseConfig = {
-  apiKey: "AIzaSyDK1wwahwoJxNAH_Iats2wrSMUA42jVhSI",
-  authDomain: "loksewa-2083.firebaseapp.com",
-  projectId: "loksewa-2083",
-  storageBucket: "loksewa-2083.firebasestorage.app",
-  messagingSenderId: "484441818228",
-  appId: "1:484441818228:web:fb43d456131cd40ec1fd21",
-  measurementId: "G-D5RTD5R7B4"
-};
-
-let app, auth, db;
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  window.__sajilo_booted = true;
-} catch(e){
-  window.__showError('Firebase init failed: ' + (e.message || e));
-  throw e;
-}
-
-/* ---- Constants ---- */
-const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
-
-const EXAMS = [
-  { id: "ntc", name: "Nepal Telecom", note: "NTC · technical & general subjects" },
-  { id: "nea", name: "Nepal Electricity Authority", note: "NEA · technical & general subjects" },
-  { id: "gk",  name: "General Loksewa", note: "General knowledge & aptitude" }
-];
-
-const SUBJECT_CATALOG = [
-  { id: "geography", name: "नेपालको भूगोल",       en: "Nepal Geography",      exams: ["ntc","nea","gk"] },
-  { id: "science",   name: "Science & Technology", en: "Science & Technology", exams: ["ntc","nea"] },
-  { id: "gk",        name: "General Knowledge",    en: "General Knowledge",    exams: ["ntc","nea","gk"] },
-  { id: "telecom",   name: "Telecommunication",    en: "Telecommunication",    exams: ["ntc"] }
-];
-
-const DEMO_CHAPTERS = [
-  { id:"geo-1", subject:"geography", title:"भौगोलिक परिचय", topics:["geo-t1","geo-t2"] },
-  { id:"geo-2", subject:"geography", title:"प्राकृतिक स्वरूप", topics:["geo-t3"] },
-  { id:"sci-1", subject:"science",   title:"Foundations", topics:["sci-t1"] }
-];
-
-const DEMO_TOPICS = {
-  "geo-t1": { id:"geo-t1", chapter:"geo-1", subject:"geography", title:"अवस्थिति र परिचय", levels:[1,2,3] },
-  "geo-t2": { id:"geo-t2", chapter:"geo-1", subject:"geography", title:"भौगोलिक सम्बन्ध", levels:[1,2] },
-  "geo-t3": { id:"geo-t3", chapter:"geo-2", subject:"geography", title:"हिमाल, पहाड, तराई", levels:[1,2,3] },
-  "sci-t1": { id:"sci-t1", chapter:"sci-1", subject:"science",   title:"SI Units", levels:[1,2,3] }
-};
-
-const DEMO_MATERIALS = {
-  "geo-t1-L1": { id:"geo-t1-L1", topic:"geo-t1", level:1, title:"नेपालको अवस्थिति", importance:"Very important",
-    blocks:[
-      { type:"p", text:"नेपाल दक्षिण एसियामा अवस्थित भूपरिवेष्टित देश हो। यसको उत्तरमा चीन र दक्षिण, पूर्व तथा पश्चिममा भारत पर्दछ।" },
-      { type:"memory", text:"Nepal → landlocked → China (north) + India (south, east, west)." },
-      { type:"p", text:"नेपालको कुल क्षेत्रफल १,४७,५१६ वर्ग किलोमिटर छ।" }
-    ] },
-  "sci-t1-L1": { id:"sci-t1-L1", topic:"sci-t1", level:1, title:"Units at a glance", importance:"Very important",
-    blocks:[
-      { type:"p", text:"विद्युत् प्रवाहको SI एकाइ एम्पियर हो। पहिले भौतिक राशि बुझ्नुहोस्, त्यसपछि यसको एकाइ सम्झनुहोस्।" },
-      { type:"table", rows:[["Quantity","SI unit"],["Current","ampere (A)"],["Force","newton (N)"]] },
-      { type:"memory", text:"Current → ampere · Force → newton" },
-      { type:"hint", text:"Recall check: hide the table and say the two units aloud." }
-    ] }
-};
-
-const DEMO_QUESTIONS = [
-  { id:"q1", topic:"sci-t1", level:1, text:"विद्युत् प्रवाहको SI एकाइ कुन हो?",
-    options:["एम्पियर","भोल्ट","ओहम","वाट"], correct:0,
-    explanation:"Current is measured in ampere (A).", memory:"A for Ampere." },
-  { id:"q2", topic:"sci-t1", level:1, text:"बलको SI एकाइ कुन हो?",
-    options:["जुल","न्युटन","पास्कल","वाट"], correct:1,
-    explanation:"Force is measured in newton (N).", memory:"N for Newton." },
-  { id:"q3", topic:"geo-t1", level:1, text:"नेपालको कुल क्षेत्रफल कति छ?",
-    options:["१,४७,५१६ वर्ग किमी","१,४५,५१६ वर्ग किमी","१,४९,५१६ वर्ग किमी","१,४७,६१५ वर्ग किमी"],
-    correct:0, explanation:"Nepal covers 147,516 km².", memory:"147516 → 1+4+7+5+1+6 = 24." }
-];
-
-/* ---- State ---- */
-let state = {
-  user:null, profile:null, route:"home",
-  currentSubject:null, currentChapter:null, currentTopic:null, currentLevel:1,
-  currentMaterial:null,
-  onboarding:{ step:1, exams:[], subjects:[] },
-  test:{ active:false, mode:"practice", questions:[], index:0, answers:{}, checked:{} },
-  revision:{ items:[], index:0, revealed:false },
-  adminTab:"overview"
-};
-
-const $  = (s, root=document) => root.querySelector(s);
-const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-const esc = s => String(s??"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const toast = msg => {
-  const el = document.createElement("div");
-  el.className = "toast"; el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(()=>el.remove(), 2600);
-};
-
-/* ---- Hide boot loader ---- */
-function hideLoader(){
-  const l = document.getElementById('boot-loading');
-  if(l) l.remove();
-}
-
-/* ---- Auth UI toggle ---- */
-function showAuth(show=true){
-  $("#view-auth").hidden = !show;
-  $("#view-onboarding").hidden = true;
-  $("#view-app").hidden = true;
-  $("#view-admin").hidden = true;
-  hideLoader();
-}
-
-$("#to-signup").onclick = e => { e.preventDefault(); $("#form-login").hidden=true; $("#form-signup").hidden=false; };
-$("#to-login").onclick  = e => { e.preventDefault(); $("#form-signup").hidden=true; $("#form-login").hidden=false; };
-
-/* ---- Login ---- */
-$("#form-login").onsubmit = async e => {
-  e.preventDefault();
-  const err = $("#login-err"); err.hidden = true;
-  const btn = $("#login-btn");
-  btn.disabled = true; btn.textContent = "Signing in…";
-  try{
-    await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-pass").value);
-  }catch(ex){
-    err.textContent = friendlyAuthError(ex); err.hidden = false;
-  }finally{
-    btn.disabled = false; btn.textContent = "Sign in";
-  }
-};
-
-/* ---- Signup ---- */
-$("#form-signup").onsubmit = async e => {
-  e.preventDefault();
-  const err = $("#signup-err"); err.hidden = true;
-  const btn = $("#signup-btn");
-  btn.disabled = true; btn.textContent = "Creating…";
-  try{
-    const cred = await createUserWithEmailAndPassword(auth, $("#su-email").value.trim(), $("#su-pass").value);
-    await updateProfile(cred.user, { displayName: $("#su-name").value.trim() });
-    await setDoc(doc(db,"users",cred.user.uid), {
-      name: $("#su-name").value.trim(),
-      email: cred.user.email,
-      selectedExams: [],
-      selectedSubjects: [],
-      onboardingDone: false,
-      createdAt: serverTimestamp()
-    }, { merge:true });
-  }catch(ex){
-    err.textContent = friendlyAuthError(ex); err.hidden = false;
-  }finally{
-    btn.disabled = false; btn.textContent = "Create account";
-  }
-};
-
-/* ---- Google ---- */
-const googleProvider = new GoogleAuthProvider();
-async function googleAuth(){
-  try{
-    const r = await signInWithPopup(auth, googleProvider);
-    const ref = doc(db,"users",r.user.uid);
-    const snap = await getDoc(ref);
-    if(!snap.exists()){
-      await setDoc(ref, {
-        name: r.user.displayName || "Student",
-        email: r.user.email,
-        selectedExams: [], selectedSubjects: [], onboardingDone:false,
-        createdAt: serverTimestamp()
-      });
-    }
-  }catch(ex){ toast(friendlyAuthError(ex)); }
-}
-$("#btn-google-login").onclick = googleAuth;
-$("#btn-google-signup").onclick = googleAuth;
-
-function friendlyAuthError(e){
-  return ({
-    "auth/invalid-email":"Please enter a valid email.",
-    "auth/user-not-found":"No account found with that email.",
-    "auth/wrong-password":"Incorrect password.",
-    "auth/invalid-credential":"Incorrect email or password.",
-    "auth/email-already-in-use":"That email is already registered. Try signing in.",
-    "auth/weak-password":"Password must be at least 6 characters.",
-    "auth/popup-closed-by-user":"Sign-in window closed. Please try again.",
-    "auth/operation-not-allowed":"This sign-in method is disabled. Enable it in Firebase Console → Authentication → Sign-in method.",
-    "auth/unauthorized-domain":"This domain is not authorized. Add it in Firebase Console → Authentication → Settings → Authorized domains.",
-    "auth/network-request-failed":"Network error. Check your internet connection."
-  })[e.code] || e.message || "Something went wrong.";
-}
-
-/* ---- Auth state ---- */
-onAuthStateChanged(auth, async user => {
-  try{
-    state.user = user;
-    if(!user){ showAuth(true); return; }
-    const snap = await getDoc(doc(db,"users",user.uid));
-    state.profile = snap.exists() ? snap.data() : {
-      name: user.displayName||"Student", email:user.email,
-      selectedExams:[], selectedSubjects:[], onboardingDone:false
-    };
-    if(!state.profile.onboardingDone) showOnboarding();
-    else { showApp(); navigate("home"); }
-  }catch(e){
-    window.__showError('Auth state error: ' + (e.message || e));
-    showAuth(true);
-  }
-});
-
-/* ---- Onboarding ---- */
-function showOnboarding(){
-  showAuth(false);
-  $("#view-onboarding").hidden = false;
-  renderOnboarding();
-}
-
-function renderOnboarding(){
-  const st = state.onboarding;
-  $("#dot2").style.background = st.step===2 ? "var(--blue)" : "var(--line)";
-  $("#onb-title").textContent = st.step===1 ? "कुन परीक्षाको तयारी गर्दै हुनुहुन्छ?" : "Choose what you want to learn.";
-  $("#onb-sub").textContent  = st.step===1 ? "Choose one or more. You can change these later." : "Selected subjects appear in My Subjects.";
-  $("#onb-exams").hidden = st.step!==1;
-  $("#onb-subjects-wrap").hidden = st.step!==2;
-  $("#onb-back").hidden = st.step===1;
-  $("#onb-continue").textContent = st.step===1 ? "Continue to subjects →" : "Save subjects & open dashboard";
-
-  if(st.step===1){
-    $("#onb-exams").innerHTML = EXAMS.map(ex=>`
-      <button class="card compact" style="text-align:left;cursor:pointer"
-        data-exam="${ex.id}" aria-pressed="${st.exams.includes(ex.id)}">
-        <div class="row between"><b>${esc(ex.name)}</b>
-          <span class="tag ${st.exams.includes(ex.id)?"active":""}">${st.exams.includes(ex.id)?"✓ Selected":"Select"}</span></div>
-        <small class="muted">${esc(ex.note)}</small></button>`).join("");
-    $$("#onb-exams [data-exam]").forEach(b=>b.onclick=()=>{
-      const id = b.dataset.exam;
-      st.exams = st.exams.includes(id) ? st.exams.filter(x=>x!==id) : [...st.exams, id];
-      renderOnboarding();
-    });
-  } else {
-    const relevant = SUBJECT_CATALOG.filter(s=>s.exams.some(e=>st.exams.includes(e)));
-    $("#onb-subjects").innerHTML = relevant.map(s=>`
-      <button class="card compact" style="text-align:left;cursor:pointer"
-        data-sub="${s.id}" aria-pressed="${st.subjects.includes(s.id)}">
-        <div class="row between"><b>${esc(s.name)}</b>
-          <span class="tag ${st.subjects.includes(s.id)?"active":""}">${st.subjects.includes(s.id)?"✓":"Select"}</span></div>
-        <small class="muted">${esc(s.en)}</small></button>`).join("") || `<p class="muted">Select an examination first.</p>`;
-    $$("#onb-subjects [data-sub]").forEach(b=>b.onclick=()=>{
-      const id = b.dataset.sub;
-      st.subjects = st.subjects.includes(id) ? st.subjects.filter(x=>x!==id) : [...st.subjects, id];
-      renderOnboarding();
-    });
-  }
-}
-$("#onb-back").onclick = () => { state.onboarding.step = 1; renderOnboarding(); };
-$("#onb-continue").onclick = async () => {
-  const st = state.onboarding;
-  if(st.step===1){
-    if(!st.exams.length){ toast("Choose at least one examination."); return; }
-    st.step = 2; renderOnboarding(); return;
-  }
-  if(!st.subjects.length){ toast("Choose at least one subject."); return; }
-  const btn = $("#onb-continue"); btn.disabled = true; btn.textContent = "Saving…";
-  try{
-    await updateDoc(doc(db,"users",state.user.uid), {
-      selectedExams: st.exams, selectedSubjects: st.subjects,
-      onboardingDone: true, updatedAt: serverTimestamp()
-    });
-    state.profile = { ...state.profile, selectedExams:st.exams, selectedSubjects:st.subjects, onboardingDone:true };
-    showApp(); navigate("home");
-  }catch(e){
-    toast("Could not save: " + (e.message||e));
-    btn.disabled = false; btn.textContent = "Save subjects & open dashboard";
-  }
-};
-
-/* ---- App shell ---- */
-function showApp(){
-  showAuth(false);
-  $("#view-onboarding").hidden = true;
-  $("#view-app").hidden = false;
-  $("#view-admin").hidden = true;
-  if(state.user) $("#btn-profile").textContent = (state.profile?.name || state.user.email || "D")[0].toUpperCase();
-}
-
-const main = $("#app-main");
-const bottomNav = $("#bottomnav");
-
-function navigate(route, ctx={}){
-  state.route = route;
-  Object.assign(state, ctx);
-  $$("#bottomnav button").forEach(b=>b.classList.toggle("active", b.dataset.route===route));
-  main.innerHTML = "";
-  ({ home:renderHome, subjects:renderSubjects, revision:renderRevisionBuilder,
-     tests:renderTests, saved:renderSaved, chapter:renderChapter, topic:renderTopic,
-     reader:renderReader, practice:renderPractice, "test-run":renderTestRunner,
-     profile:renderProfile }[route] || renderHome)();
-  window.scrollTo(0,0);
-}
-bottomNav.onclick = e => {
-  const b = e.target.closest("button[data-route]");
-  if(b) navigate(b.dataset.route);
-};
-$("#btn-theme").onclick = () => {
-  const cur = document.documentElement.getAttribute("data-theme")==="dark" ? "" : "dark";
-  document.documentElement.setAttribute("data-theme", cur || "");
-  localStorage.setItem("sajilo-theme", cur || "light");
-};
-$("#btn-profile").onclick = () => navigate("profile");
-
-/* ---- Home ---- */
-async function renderHome(){
-  const p = state.profile || {};
-  const subjects = (p.selectedSubjects||[]).map(id=>SUBJECT_CATALOG.find(s=>s.id===id)).filter(Boolean);
-  const due = await countDueRevision();
-  main.innerHTML = `
-    <div class="row between">
-      <div><small class="muted">नमस्ते, ${esc((p.name||"विद्यार्थी").split(" ")[0])}</small>
-        <h2 style="margin:2px 0">Your next small step.</h2></div>
-      <span style="font-size:32px;color:var(--purple)">✦</span>
-    </div>
-    <div class="hero">
-      <small style="font-size:9px;letter-spacing:.1em">START WITH ONE TOPIC</small>
-      <h2>Build a study habit<br>that lasts.</h2>
-      <p>${subjects.length ? "Read → recall → test → revise." : "Choose subjects to begin."}</p>
-      <button class="btn" style="margin-top:12px;color:var(--blue);border-color:#fff" id="hero-go">
-        ${subjects.length ? "Explore my subjects →" : "Choose subjects →"}</button>
-    </div>
-    <div class="grid two">
-      <div class="card compact"><small class="muted">Reading</small><b>Not started</b></div>
-      <div class="card compact"><small class="muted">Mastery</small><b>Not assessed</b></div>
-    </div>
-    <div class="row between" style="margin-top:16px">
-      <h3 style="margin:0;font-size:18px">Due revision</h3>
-      <small class="muted">${due} item${due===1?"":"s"}</small>
-    </div>
-    ${due>0 ? `<button class="btn primary block" id="go-revision">Start revision (${due})</button>`
-             : `<p class="muted small">Read, practise and rate recall to build your review queue.</p>`}
-    <div class="row between" style="margin-top:18px"><h3 style="margin:0;font-size:18px">My subjects</h3>
-      <a href="#" data-nav="subjects" class="small">View all →</a></div>
-    ${subjects.length ? subjects.map(s=>`
-      <article class="card">
-        <div class="row between"><span class="tag">${esc(s.en)}</span><span class="tag">Not assessed</span></div>
-        <h3 style="font-size:17px;margin:8px 0 4px">${esc(s.name)}</h3>
-        <small class="muted">Read → recall → test</small>
-        <div class="prog"><span style="width:0%"></span></div>
-        <button class="btn small ghost" style="padding-left:0" data-subject="${s.id}">Continue study →</button>
-      </article>`).join("")
-      : `<div class="empty"><div class="icon">◇</div><b>No subjects yet.</b>
-          <p class="small">Add subjects to start learning.</p>
-          <button class="btn primary" data-nav="subjects">Add subjects</button></div>`}
-  `;
-  $("#hero-go").onclick = () => navigate("subjects");
-  if($("#go-revision")) $("#go-revision").onclick = () => navigate("revision");
-  $$("[data-subject]").forEach(b=>b.onclick=()=>{ state.currentSubject = b.dataset.subject; navigate("chapter"); });
-  bindDataNav();
-}
-function bindDataNav(){ $$("[data-nav]").forEach(a=>a.onclick=e=>{e.preventDefault(); navigate(a.dataset.nav);}); }
-
-/* ---- Subjects ---- */
-function renderSubjects(){
-  const p = state.profile || {};
-  const subjects = (p.selectedSubjects||[]).map(id=>SUBJECT_CATALOG.find(s=>s.id===id)).filter(Boolean);
-  main.innerHTML = `
-    <div class="row between"><h2 style="margin:0">My Subjects</h2>
-      <button class="iconbtn" id="add-subject">＋</button></div>
-    <p class="muted small">Your chosen syllabus</p>
-    ${subjects.length ? subjects.map(s=>`
-      <article class="card">
-        <div class="row between"><span class="tag">${esc(s.en)}</span><span class="tag">Not assessed</span></div>
-        <h3 style="font-size:17px;margin:8px 0 4px">${esc(s.name)}</h3>
-        <small class="muted">Read → recall → test</small>
-        <div class="prog"><span style="width:0%"></span></div>
-        <div class="row between" style="margin-top:10px">
-          <button class="btn small ghost" style="padding-left:0" data-open="${s.id}">Continue study →</button>
-          <button class="btn small danger" data-remove="${s.id}">Remove</button>
-        </div></article>`).join("")
-      : `<div class="empty"><div class="icon">▤</div><b>No subjects selected.</b>
-          <button class="btn primary" id="empty-add">Add subjects</button></div>`}
-  `;
-  $("#add-subject").onclick = addSubjectsDialog;
-  if($("#empty-add")) $("#empty-add").onclick = addSubjectsDialog;
-  $$("[data-open]").forEach(b=>b.onclick=()=>{ state.currentSubject = b.dataset.open; navigate("chapter"); });
-  $$("[data-remove]").forEach(b=>b.onclick=()=>removeSubject(b.dataset.remove));
-}
-
-async function addSubjectsDialog(){
-  const p = state.profile || {};
-  const current = p.selectedSubjects||[];
-  const available = SUBJECT_CATALOG.filter(s=>(p.selectedExams||[]).includes("gk") || s.exams.some(e=>(p.selectedExams||[]).includes(e)));
-  const choice = prompt(`Add subjects by number (comma separated):\n\n${available.map((s,i)=>`${i+1}. ${s.name} (${s.en})`).join("\n")}`);
-  if(!choice) return;
-  const ids = choice.split(",").map(n=>available[parseInt(n.trim(),10)-1]?.id).filter(Boolean);
-  if(!ids.length){ toast("No valid selection."); return; }
-  const merged = [...new Set([...current, ...ids])];
-  await updateDoc(doc(db,"users",state.user.uid), { selectedSubjects: merged, updatedAt: serverTimestamp() });
-  state.profile.selectedSubjects = merged;
-  renderSubjects();
-}
-async function removeSubject(id){
-  if(!confirm("Remove this subject from My Subjects? Your progress is kept.")) return;
-  const next = (state.profile.selectedSubjects||[]).filter(s=>s!==id);
-  await updateDoc(doc(db,"users",state.user.uid), { selectedSubjects: next, updatedAt: serverTimestamp() });
-  state.profile.selectedSubjects = next;
-  renderSubjects();
-}
-
-/* ---- Chapter / Topic ---- */
-function renderChapter(){
-  const subj = SUBJECT_CATALOG.find(s=>s.id===state.currentSubject);
-  if(!subj){ navigate("subjects"); return; }
-  const chapters = DEMO_CHAPTERS.filter(c=>c.subject===subj.id);
-  main.innerHTML = `
-    <button class="btn small ghost" style="padding-left:0" id="back-sub">← Subjects</button>
-    <div class="hero" style="background:linear-gradient(125deg,var(--blue),var(--purple))">
-      <small style="font-size:9px;letter-spacing:.1em">SUBJECT OVERVIEW</small>
-      <h2>${esc(subj.name)}</h2><p>Read clearly. Recall confidently.</p>
-    </div>
-    <div class="grid two">
-      <div class="card compact"><small class="muted">Reading</small><b>Not started</b></div>
-      <div class="card compact"><small class="muted">Latest score</small><b>Not assessed</b></div>
-    </div>
-    <h3 style="font-size:17px">Chapters</h3>
-    ${chapters.length ? chapters.map(ch=>`
-      <button class="listrow" data-chapter="${ch.id}">
-        <div><strong>${esc(ch.title)}</strong><small>Not started · Not assessed</small></div>
-        <span class="arrow">›</span></button>`).join("")
-      : `<p class="muted">Chapters are being prepared.</p>`}`;
-  $("#back-sub").onclick = () => navigate("subjects");
-  $$("[data-chapter]").forEach(b=>b.onclick=()=>{
-    state.currentChapter = b.dataset.chapter;
-    const ch = DEMO_CHAPTERS.find(c=>c.id===state.currentChapter);
-    const topics = (ch?.topics||[]).map(id=>DEMO_TOPICS[id]).filter(Boolean);
-    main.innerHTML = `
-      <button class="btn small ghost" style="padding-left:0" id="back-sub2">← ${esc(subj.name)}</button>
-      <span class="tag">CHAPTER</span>
-      <h2 style="margin:6px 0">${esc(ch.title)}</h2>
-      <p class="muted">Learn the overview first, then connect facts with practice.</p>
-      <h3 style="font-size:17px">Topics & levels</h3>
-      ${topics.map(t=>`
-        <article class="card"><b>${esc(t.title)}</b>
-          <div class="chips">${(t.levels||[1]).map(l=>`<span class="tag">L${l} · ${l===1?"Basic":l===2?"Medium":"Advanced"}</span>`).join("")}</div>
-          <button class="btn primary block" data-topic="${t.id}">Open topic →</button></article>`).join("")}`;
-    $("#back-sub2").onclick = () => navigate("chapter");
-    $$("[data-topic]").forEach(bb=>bb.onclick=()=>{
-      state.currentTopic = bb.dataset.topic; state.currentLevel = 1; navigate("topic");
-    });
-  });
-}
-
-function renderTopic(){
-  const t = DEMO_TOPICS[state.currentTopic];
-  if(!t){ navigate("subjects"); return; }
-  const levels = t.levels||[1];
-  main.innerHTML = `
-    <button class="btn small ghost" style="padding-left:0" id="back-ch">← Chapter</button>
-    <h2 style="margin:6px 0">${esc(t.title)}</h2>
-    <div class="level-switch">
-      ${levels.map(l=>`<button data-level="${l}" class="${l===state.currentLevel?"on":""}">L${l} · ${l===1?"Basic":l===2?"Medium":"Advanced"}</button>`).join("")}
-    </div>
-    <div class="grid three">
-      <div class="card compact"><small class="muted">Read</small><b>Unread</b></div>
-      <div class="card compact"><small class="muted">Test</small><b>Not assessed</b></div>
-      <div class="card compact"><small class="muted">Mastery</small><b>Not assessed</b></div>
-    </div>
-    <h3 style="font-size:17px">Study materials</h3>
-    ${Object.values(DEMO_MATERIALS).filter(m=>m.topic===t.id && m.level===state.currentLevel).map(m=>`
-      <article class="card">
-        <div class="row between"><b>${esc(m.title)}</b><span class="tag">${esc(m.importance)}</span></div>
-        <small class="muted">${m.blocks.length} blocks · L${m.level}</small>
-        <button class="btn primary block" style="margin-top:10px" data-read="${m.id}">Read this material →</button>
-      </article>`).join("") || `<p class="muted">Content is being prepared for this level.</p>`}
-    <div class="memory"><b>Remember this</b><p>Link each physical quantity with its unit before memorising the symbol.</p></div>
-    <button class="btn primary block" id="practice-topic">Practise questions (L${state.currentLevel})</button>`;
-  $("#back-ch").onclick = () => navigate("chapter");
-  $$("[data-level]").forEach(b=>b.onclick=()=>{ state.currentLevel = +b.dataset.level; renderTopic(); });
-  $$("[data-read]").forEach(b=>b.onclick=()=>{ state.currentMaterial = b.dataset.read; navigate("reader"); });
-  $("#practice-topic").onclick = () => startPractice(state.currentTopic, state.currentLevel);
-}
-
-/* ---- Reader ---- */
-function renderReader(){
-  const m = DEMO_MATERIALS[state.currentMaterial];
-  if(!m){ navigate("topic"); return; }
-  const body = m.blocks.map(b=>{
-    if(b.type==="p") return `<p>${esc(b.text)}</p>`;
-    if(b.type==="memory") return `<div class="memory"><b>Memory cue</b><p>${esc(b.text)}</p></div>`;
-    if(b.type==="hint") return `<div class="card compact" style="background:var(--soft);color:var(--blue);border:0">${esc(b.text)}</div>`;
-    if(b.type==="table") return `<div class="card compact" style="padding:0;overflow:hidden">
-      ${b.rows.map((r,i)=>`<div style="display:grid;grid-template-columns:1fr 1fr;padding:10px 12px;border-bottom:1px solid var(--line);${i===0?"background:var(--soft);font-weight:700":""}">
-        ${r.map(c=>`<span>${esc(c)}</span>`).join("")}</div>`).join("")}</div>`;
-    if(b.type==="image") return `<figure class="media-block"><img src="${esc(b.src)}" alt="${esc(b.alt||"")}"><figcaption class="micro muted">${esc(b.caption||"")}</figcaption></figure>`;
-    if(b.type==="audio") return `<div class="media-block"><audio controls src="${esc(b.src)}"></audio><small class="muted">${esc(b.caption||"Audio")}</small></div>`;
-    if(b.type==="youtube") return `<div class="media-block"><iframe src="https://www.youtube-nocookie.com/embed/${esc(b.id)}" title="Video" allowfullscreen loading="lazy"></iframe></div>`;
-    return "";
-  }).join("");
-  main.innerHTML = `
-    <button class="btn small ghost" style="padding-left:0" id="back-topic">← Topic</button>
-    <span class="tag">${esc(m.importance)}</span>
-    <h2 style="margin:6px 0">${esc(m.title)}</h2>
-    <small class="muted">L${m.level} · ${esc(DEMO_TOPICS[m.topic]?.title||"")}</small>
-    <div class="reader content" style="padding:0;margin-top:14px">${body}</div>
-    <div class="reader-actions">
-      <button data-act="fav">♡ Favourite</button>
-      <button data-act="rev">↻ Revision</button>
-      <button data-act="imp">☆ Important</button>
-      <button data-act="note">✎ Note</button>
-      <button data-act="report">⚑ Report</button>
-      <button data-act="share">↗ Share</button>
-    </div>
-    <button class="btn primary block" id="mark-read">Mark as read</button>
-    <button class="btn block" id="test-now">Test what you learned →</button>`;
-  $("#back-topic").onclick = () => navigate("topic");
-  $("#mark-read").onclick = async () => {
-    await updateDoc(doc(db,"users",state.user.uid), {
-      readMaterials: arrayUnion(m.id), updatedAt: serverTimestamp()
-    });
-    toast("Marked as read.");
-  };
-  $("#test-now").onclick = () => startPractice(m.topic, m.level);
-  $$("[data-act]").forEach(b=>b.onclick=()=>handleReaderAction(b.dataset.act, m.id));
-}
-
-async function handleReaderAction(act, materialId){
-  const map = { fav:"favourites", rev:"revisionQueue", imp:"important" };
-  if(map[act]){
-    const field = map[act];
-    const current = state.profile[field]||[];
-    const has = current.includes(materialId);
-    await updateDoc(doc(db,"users",state.user.uid), {
-      [field]: has ? arrayRemove(materialId) : arrayUnion(materialId),
-      updatedAt: serverTimestamp()
-    });
-    state.profile[field] = has ? current.filter(x=>x!==materialId) : [...current, materialId];
-    toast(has ? "Removed." : "Saved.");
-  }
-  if(act==="note"){
-    const note = prompt("Your personal note:");
-    if(note) await addDoc(collection(db,"users",state.user.uid,"notes"), {
-      materialId, text:note, createdAt: serverTimestamp()
-    });
-  }
-  if(act==="report"){
-    const reason = prompt("What is wrong with this material?");
-    if(reason) await addDoc(collection(db,"reports"), {
-      materialId, reason, uid:state.user.uid, email:state.user.email, createdAt:serverTimestamp()
-    });
-    toast("Report submitted.");
-  }
-  if(act==="share"){
-    const url = `${location.origin}${location.pathname}#material=${materialId}`;
-    navigator.clipboard?.writeText(url).then(()=>toast("Link copied."));
-  }
-}
-
-/* ---- Practice ---- */
-function startPractice(topicId, level){
-  const qs = DEMO_QUESTIONS.filter(q=>q.topic===topicId && q.level===level);
-  if(!qs.length){ toast("No practice questions for this level yet."); return; }
-  state.test = { active:true, mode:"practice", questions:qs, index:0, answers:{}, checked:{} };
-  navigate("practice");
-}
-
-function renderPractice(){
-  const t = state.test;
-  if(!t.questions.length){ navigate("topic"); return; }
-  const q = t.questions[t.index];
-  const sel = t.answers[q.id];
-  const chk = t.checked?.[q.id];
-  main.innerHTML = `
-    <button class="btn small ghost" style="padding-left:0" id="exit-practice">← Exit practice</button>
-    <div class="row between"><span class="tag">Practice question</span>
-      <small class="muted">${t.index+1} / ${t.questions.length}</small></div>
-    <h2 style="font-size:20px;line-height:1.7;margin:18px 0">${esc(q.text)}</h2>
-    ${q.options.map((o,i)=>{
-      let cls = "";
-      if(chk){ if(i===q.correct) cls = "correct"; else if(i===sel) cls = "wrong"; }
-      else if(sel===i) cls = "sel";
-      return `<button class="answer ${cls}" data-opt="${i}"><span>${String.fromCharCode(65+i)}</span>${esc(o)}</button>`;
-    }).join("")}
-    ${chk ? `<div class="card compact" style="background:${chk.correct?"#ecfdf3":"#fef2f2"}">
-      <b>${chk.correct?"✓ Correct":"✗ Incorrect"}</b>
-      <p class="small">${esc(q.explanation)}</p>
-      ${q.memory?`<div class="memory" style="margin:8px 0 0"><b>Memory cue</b><p>${esc(q.memory)}</p></div>`:""}
-    </div>` : ""}
-    <button class="btn primary block" id="check-answer">${chk?"Next →":"Check answer"}</button>`;
-  $("#exit-practice").onclick = () => { state.test.active = false; navigate("topic"); };
-  $$("[data-opt]").forEach(b=>b.onclick=()=>{ if(chk) return; state.test.answers[q.id] = +b.dataset.opt; renderPractice(); });
-  $("#check-answer").onclick = async () => {
-    if(!chk){
-      if(state.test.answers[q.id]===undefined){ toast("Choose an answer first."); return; }
-      const correct = state.test.answers[q.id]===q.correct;
-      state.test.checked = { ...(state.test.checked||{}), [q.id]:{correct} };
-      await recordPracticeAnswer(q, correct);
-      renderPractice();
-    } else {
-      if(t.index < t.questions.length-1){ state.test.index++; renderPractice(); }
-      else { toast("Practice complete."); navigate("topic"); }
-    }
-  };
-}
-
-async function recordPracticeAnswer(q, correct){
-  const ref = doc(db,"users",state.user.uid);
-  const field = correct ? "practiceCorrect" : "practiceWrong";
-  await setDoc(ref, { [field]: { [q.id]: serverTimestamp() } }, { merge:true });
-  if(!correct) await updateDoc(ref, { revisionQueue: arrayUnion(q.id), updatedAt: serverTimestamp() });
-}
-
-/* ---- Tests ---- */
-function renderTests(){
-  main.innerHTML = `
-    <h2 style="margin:0">Tests</h2>
-    <p class="muted small">A focused test. A useful next step.</p>
-    <div class="card">
-      <h3 style="font-size:17px;margin:0 0 10px">Quick test</h3>
-      <p class="small muted">${DEMO_QUESTIONS.length} demo questions available.</p>
-      <button class="btn primary block" id="start-test">Start test (${Math.min(5,DEMO_QUESTIONS.length)} questions)</button>
-    </div>
-    <div class="card compact"><b>Your results</b>
-      <p class="small muted">Submitted attempts will appear here.</p></div>`;
-  $("#start-test").onclick = () => {
-    state.test = { active:true, mode:"test", questions:DEMO_QUESTIONS.slice(0,5), index:0, answers:{}, checked:{} };
-    navigate("test-run");
-  };
-}
-
-function renderTestRunner(){
-  const t = state.test;
-  if(!t.questions.length){ navigate("tests"); return; }
-  const q = t.questions[t.index];
-  const sel = t.answers[q.id];
-  main.innerHTML = `
-    <div class="row between"><span class="tag">Question ${t.index+1} / ${t.questions.length}</span>
-      <small class="muted">Answers hidden until submission</small></div>
-    <h2 style="font-size:20px;line-height:1.7;margin:18px 0">${esc(q.text)}</h2>
-    ${q.options.map((o,i)=>`<button class="answer ${sel===i?"sel":""}" data-opt="${i}"><span>${String.fromCharCode(65+i)}</span>${esc(o)}</button>`).join("")}
-    <div class="row between">
-      <button class="btn small" id="t-prev" ${t.index===0?"disabled":""}>← Previous</button>
-      <button class="btn small" id="t-next" ${t.index===t.questions.length-1?"disabled":""}>Next →</button>
-    </div>
-    <button class="btn primary block" id="t-submit" style="margin-top:14px">Submit test</button>`;
-  $$("[data-opt]").forEach(b=>b.onclick=()=>{ state.test.answers[q.id] = +b.dataset.opt; renderTestRunner(); });
-  $("#t-prev").onclick = () => { if(t.index>0){t.index--; renderTestRunner();} };
-  $("#t-next").onclick = () => { if(t.index<t.questions.length-1){t.index++; renderTestRunner();} };
-  $("#t-submit").onclick = async () => { if(confirm("Submit this test?")) await submitTest(); };
-}
-
-async function submitTest(){
-  const t = state.test;
-  let correct=0, wrong=0, unanswered=0;
-  t.questions.forEach(q=>{
-    if(t.answers[q.id]===undefined) unanswered++;
-    else if(t.answers[q.id]===q.correct) correct++;
-    else wrong++;
-  });
-  const total = t.questions.length;
-  const pct = Math.round((correct/total)*100);
-  await addDoc(collection(db,"users",state.user.uid,"attempts"), {
-    correct, wrong, unanswered, total, pct, answers:t.answers, createdAt: serverTimestamp()
-  });
-  main.innerHTML = `
-    <h2>Understand your next step.</h2>
-    <div class="hero" style="text-align:center">
-      <div style="font-size:44px;font-weight:800">${pct}%</div>
-      <p>${correct} / ${total} correct</p>
-    </div>
-    <div class="grid three">
-      <div class="card compact"><small class="muted">Correct</small><b>${correct}</b></div>
-      <div class="card compact"><small class="muted">Incorrect</small><b>${wrong}</b></div>
-      <div class="card compact"><small class="muted">Unanswered</small><b>${unanswered}</b></div>
-    </div>
-    <button class="btn primary block" style="margin-top:14px" id="retry-wrong">Retry wrong questions</button>
-    <button class="btn block" id="back-tests">Back to tests</button>`;
-  $("#retry-wrong").onclick = () => {
-    const wrongQs = t.questions.filter(q=>t.answers[q.id]!==undefined && t.answers[q.id]!==q.correct);
-    if(!wrongQs.length){ toast("No wrong answers."); return; }
-    state.test = { active:true, mode:"test", questions:wrongQs, index:0, answers:{}, checked:{} };
-    navigate("test-run");
-  };
-  $("#back-tests").onclick = () => { state.test.active = false; navigate("tests"); };
-}
-
-/* ---- Revision ---- */
-async function countDueRevision(){
-  try{
-    const q = query(collection(db,"users",state.user.uid,"revision"),
-      where("due","<=",new Date()), limit(50));
-    const s = await getDocs(q);
-    return s.size;
-  }catch(e){ return 0; }
-}
-
-function renderRevisionBuilder(){
-  main.innerHTML = `
-    <h2 style="margin:0">Quick Revision</h2>
-    <p class="muted small">Remember more, in less time.</p>
-    <div class="chips">
-      <span class="tag active">Due reviews</span><span class="tag">Wrong answers</span>
-      <span class="tag">Favourites</span><span class="tag">Important</span>
-    </div>
-    <div class="card"><b>Build a session</b>
-      <p class="small muted">Combines your revision queue, wrong answers, favourites and important marks.</p>
-      <button class="btn primary block" id="build-rev">Preview revision →</button></div>`;
-  $("#build-rev").onclick = buildRevisionSession;
-}
-
-async function buildRevisionSession(){
-  const p = state.profile || {};
-  const ids = [...new Set([...(p.revisionQueue||[]), ...(p.favourites||[]), ...(p.important||[])])];
-  const qs = DEMO_QUESTIONS.filter(q=>ids.includes(q.id));
-  const fallback = qs.length ? qs : DEMO_QUESTIONS.slice(0,3);
-  state.revision = { items:fallback, index:0, revealed:false };
-  renderRevisionCard();
-}
-
-function renderRevisionCard(){
-  const r = state.revision;
-  if(!r.items.length){ navigate("revision"); return; }
-  const q = r.items[r.index];
-  main.innerHTML = `
-    <div class="row between"><span class="tag">Flashcard</span>
-      <button class="btn small ghost" id="end-rev">End session</button></div>
-    <div class="prog"><span style="width:${(r.index/r.items.length)*100}%"></span></div>
-    <small class="muted">${r.index+1} / ${r.items.length}</small>
-    <div class="card" style="min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-top:18px">
-      <small class="tag active">RECALL FIRST</small>
-      <h3 style="margin:14px 0">${esc(q.text)}</h3>
-      ${r.revealed ? `
-        <p class="muted">Correct: <b>${esc(q.options[q.correct])}</b></p>
-        <p class="small">${esc(q.explanation)}</p>
-        <div class="grid two" style="width:100%;margin-top:12px">
-          <button class="btn small" data-rate="again">Again</button>
-          <button class="btn small" data-rate="hard">Hard</button>
-          <button class="btn small" data-rate="good">Good</button>
-          <button class="btn small" data-rate="easy">Easy</button>
-        </div>` : `<button class="btn primary" id="reveal">Reveal answer</button>`}
-    </div>`;
-  $("#end-rev").onclick = () => { state.revision.items = []; navigate("revision"); };
-  if($("#reveal")) $("#reveal").onclick = () => { state.revision.revealed = true; renderRevisionCard(); };
-  $$("[data-rate]").forEach(b=>b.onclick=()=>rateRevision(b.dataset.rate));
-}
-
-async function rateRevision(rating){
-  const q = state.revision.items[state.revision.index];
-  const days = { again:0, hard:1, good:3, easy:7 }[rating];
-  const due = new Date(); due.setDate(due.getDate() + days);
-  await setDoc(doc(db,"users",state.user.uid,"revision",q.id), {
-    questionId:q.id, rating, due, updatedAt: serverTimestamp()
-  }, { merge:true });
-  toast(`Rated ${rating}.`);
-  state.revision.index++;
-  state.revision.revealed = false;
-  if(state.revision.index >= state.revision.items.length){
-    main.innerHTML = `<div class="empty"><div class="icon">✓</div>
-      <h3>Session complete</h3>
-      <p class="small muted">${state.revision.items.length} cards reviewed.</p>
-      <button class="btn primary" id="rev-done">Back to revision</button></div>`;
-    $("#rev-done").onclick = () => navigate("revision");
-    state.revision.items = [];
-  } else renderRevisionCard();
-}
-
-/* ---- Saved ---- */
-function renderSaved(){
-  const p = state.profile||{};
-  const all = [...new Set([...(p.favourites||[]), ...(p.important||[]), ...(p.revisionQueue||[])])];
-  main.innerHTML = `
-    <h2 style="margin:0">Saved</h2>
-    <p class="muted small">Your personal learning shelf</p>
-    ${all.length ? all.map(id=>{
-      const m = DEMO_MATERIALS[id];
-      const q = DEMO_QUESTIONS.find(x=>x.id===id);
-      const title = m?.title || q?.text || id;
-      const type = m ? "Material" : "Question";
-      return `<div class="listrow"><div><strong>${esc(title)}</strong><small>${type} · Saved</small></div><span class="arrow">›</span></div>`;
-    }).join("") : `<div class="empty"><div class="icon">◇</div>
-      <b>Your collection starts here.</b>
-      <p class="small">Save a material, question or memory cue while studying.</p>
-      <button class="btn primary" data-nav="subjects">Explore my subjects</button></div>`}`;
-  bindDataNav();
-}
-
-/* ---- Profile ---- */
-function renderProfile(){
-  const p = state.profile||{};
-  main.innerHTML = `
-    <div style="text-align:center;padding:10px 0 18px">
-      <span class="avatar" style="width:60px;height:60px;margin:auto;font-size:25px">${esc((p.name||"D")[0])}</span>
-      <h3 style="margin:8px 0 2px">${esc(p.name||"Your account")}</h3>
-      <small class="muted">${esc(p.email||state.user.email)}</small>
-    </div>
-    <div class="listrow"><div><strong>Target examinations</strong><small>${(p.selectedExams||[]).map(id=>EXAMS.find(e=>e.id===id)?.name).filter(Boolean).join(", ")||"Not set"}</small></div><span class="arrow">›</span></div>
-    <div class="listrow"><div><strong>My Subjects</strong><small>${(p.selectedSubjects||[]).length} selected</small></div><span class="arrow">›</span></div>
-    <div class="listrow"><div><strong>Appearance</strong><small>Light / Dark</small></div><span class="arrow">›</span></div>
-    ${state.user.email===ADMIN_EMAIL ? `<button class="btn block" style="margin-top:14px" id="open-admin">Open Admin Studio</button>` : ""}
-    <button class="btn danger block" style="margin-top:14px" id="signout">Sign out</button>`;
-  $("#signout").onclick = async () => { await signOut(auth); showAuth(true); };
-  if($("#open-admin")) $("#open-admin").onclick = openAdmin;
-}
-
-/* ---- Admin ---- */
-function openAdmin(){
-  if(state.user?.email !== ADMIN_EMAIL){ toast("Admin access only."); return; }
-  $("#view-app").hidden = true;
-  $("#view-admin").hidden = false;
-  renderAdminTab("overview");
-}
-$("#admin-exit").onclick = () => { showApp(); navigate("home"); };
-$$("#view-admin [data-admin]").forEach(b=>b.onclick=()=>{
-  state.adminTab = b.dataset.admin;
-  $$("#view-admin .nav-item").forEach(x=>x.classList.toggle("active", x.dataset.admin===state.adminTab));
-  renderAdminTab(state.adminTab);
-});
-
-function renderAdminTab(tab){
-  const el = $("#admin-main");
-  if(tab==="overview"){
-    el.innerHTML = `<h2>Content studio</h2><p class="muted">Draft → preview → validate → publish</p>
-      <div class="grid three">
-        <div class="card"><small class="muted">Examinations</small><h3>${EXAMS.length}</h3></div>
-        <div class="card"><small class="muted">Subjects</small><h3>${SUBJECT_CATALOG.length}</h3></div>
-        <div class="card"><small class="muted">Questions</small><h3>${DEMO_QUESTIONS.length}</h3></div>
-      </div>`;
-  }
-  if(tab==="exams") el.innerHTML = `<h2>Examinations</h2>${EXAMS.map(e=>`<div class="listrow"><div><strong>${esc(e.name)}</strong><small>${esc(e.note)}</small></div><span class="tag">${e.id}</span></div>`).join("")}`;
-  if(tab==="subjects") el.innerHTML = `<h2>Subjects</h2>${SUBJECT_CATALOG.map(s=>`<div class="listrow"><div><strong>${esc(s.name)}</strong><small>${esc(s.en)}</small></div><span class="tag">${s.exams.join(" · ")}</span></div>`).join("")}`;
-  if(tab==="chapters") el.innerHTML = `<h2>Chapters & Topics</h2>${DEMO_CHAPTERS.map(c=>`<div class="listrow"><div><strong>${esc(c.title)}</strong><small>${c.topics.length} topics</small></div><span class="tag">${esc(c.subject)}</span></div>`).join("")}`;
-  if(tab==="materials") el.innerHTML = `<h2>Study materials</h2>${Object.values(DEMO_MATERIALS).map(m=>`<div class="listrow"><div><strong>${esc(m.title)}</strong><small>L${m.level} · ${esc(m.importance)}</small></div><span class="tag">${m.blocks.length} blocks</span></div>`).join("")}`;
-  if(tab==="questions") el.innerHTML = `<h2>Questions</h2>${DEMO_QUESTIONS.map(q=>`<div class="listrow"><div><strong>${esc(q.text.slice(0,60))}…</strong><small>L${q.level} · ${esc(q.topic)}</small></div><span class="tag">${q.options.length} options</span></div>`).join("")}`;
-  if(tab==="reports") el.innerHTML = `<h2>Reports</h2><p class="muted">Student reports arrive from the <code>reports</code> collection.</p>`;
-  if(tab==="settings") el.innerHTML = `<h2>Settings</h2><p class="muted">Admin email: <b>${ADMIN_EMAIL}</b></p><p class="small">Firestore rules check <code>request.auth.token.email</code>.</p>`;
-}
-
-/* ---- Global nav handler ---- */
-document.addEventListener("click", e=>{
-  const a = e.target.closest("[data-nav]");
-  if(a){ e.preventDefault(); navigate(a.dataset.nav); }
-});
-
-/* ---- Theme boot ---- */
-const savedTheme = localStorage.getItem("sajilo-theme");
-if(savedTheme==="dark") document.documentElement.setAttribute("data-theme","dark");
-</script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
