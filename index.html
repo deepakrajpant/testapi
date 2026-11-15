@@ -24,7 +24,6 @@ body{margin:0;background:var(--bg);color:var(--ink);
 a{color:var(--blue);text-decoration:none}
 button{font:inherit;cursor:pointer}
 [hidden]{display:none!important}
-.app{max-width:1370px;margin:auto;padding:0 0 90px}
 .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;
   gap:10px;padding:12px 18px;background:var(--surface);border-bottom:1px solid var(--line)}
 .logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
@@ -139,6 +138,19 @@ button{font:inherit;cursor:pointer}
   font-size:13px;margin-bottom:4px}
 .admin-side .nav-item.active{background:var(--soft);color:var(--blue);font-weight:700}
 .admin-main{padding:22px;max-width:1100px}
+
+/* Boot / loading states */
+#boot-loading{position:fixed;inset:0;z-index:900;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+#boot-loading .spin{width:44px;height:44px;border-radius:50%;
+  border:4px solid var(--line);border-top-color:var(--blue);
+  animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#boot-error{position:fixed;top:0;left:0;right:0;z-index:999;
+  background:#fee2e2;color:#991b1b;padding:14px 18px;font:13px/1.5 system-ui;
+  border-bottom:2px solid #fca5a5;white-space:pre-wrap;max-height:60vh;overflow:auto}
+#boot-error b{display:block;margin-bottom:6px;font-size:14px}
+
 @media(max-width:700px){
   .admin-shell{grid-template-columns:1fr}
   .admin-side{display:flex;gap:6px;overflow-x:auto;border-right:0;
@@ -151,22 +163,40 @@ button{font:inherit;cursor:pointer}
 </head>
 <body>
 
-<!-- AUTH -->
-<section id="view-auth" class="auth-wrap" hidden>
+<!-- BOOT ERROR BANNER -->
+<div id="boot-error" hidden></div>
+
+<!-- BOOT LOADING -->
+<div id="boot-loading">
+  <div class="logo" style="width:60px;height:60px;font-size:36px;border-radius:16px">S</div>
+  <div class="spin"></div>
+  <p class="muted small">Starting Sajilo GK…</p>
+</div>
+
+<noscript>
+  <div style="padding:24px;background:#fef3c7;color:#92400e;font:14px system-ui;text-align:center">
+    ⚠️ JavaScript is disabled. Please enable JavaScript to use Sajilo GK.
+  </div>
+</noscript>
+
+<!-- ============ AUTH (VISIBLE BY DEFAULT) ============ -->
+<section id="view-auth" class="auth-wrap">
   <div class="auth-logo">S</div>
   <h1>तयारी सजिलो।<br>सम्झना बलियो।</h1>
   <p class="sub">Smart Loksewa Preparation Made Simple</p>
   <div id="auth-forms">
+    <!-- LOGIN -->
     <form id="form-login" class="stack">
       <div class="field"><label>Email</label>
         <input type="email" id="login-email" autocomplete="email" required placeholder="you@example.com"></div>
       <div class="field"><label>Password</label>
         <input type="password" id="login-pass" autocomplete="current-password" required minlength="6" placeholder="••••••••"></div>
       <p id="login-err" class="err" hidden></p>
-      <button class="btn primary block" type="submit">Sign in</button>
+      <button class="btn primary block" type="submit" id="login-btn">Sign in</button>
       <button class="btn block" type="button" id="btn-google-login">Continue with Google</button>
       <p class="small muted" style="text-align:center">New here? <a href="#" id="to-signup"><b>Create an account</b></a></p>
     </form>
+    <!-- SIGNUP -->
     <form id="form-signup" class="stack" hidden>
       <div class="field"><label>Full name</label>
         <input type="text" id="su-name" required placeholder="Your name"></div>
@@ -175,14 +205,14 @@ button{font:inherit;cursor:pointer}
       <div class="field"><label>Password</label>
         <input type="password" id="su-pass" autocomplete="new-password" required minlength="6" placeholder="At least 6 characters"></div>
       <p id="signup-err" class="err" hidden></p>
-      <button class="btn primary block" type="submit">Create account</button>
+      <button class="btn primary block" type="submit" id="signup-btn">Create account</button>
       <button class="btn block" type="button" id="btn-google-signup">Continue with Google</button>
       <p class="small muted" style="text-align:center">Already registered? <a href="#" id="to-login"><b>Sign in</b></a></p>
     </form>
   </div>
 </section>
 
-<!-- ONBOARDING -->
+<!-- ============ ONBOARDING ============ -->
 <section id="view-onboarding" class="page" hidden>
   <div class="row" style="gap:5px">
     <i id="dot1" style="flex:1;height:4px;border-radius:3px;background:var(--blue)"></i>
@@ -200,7 +230,7 @@ button{font:inherit;cursor:pointer}
   <button class="btn ghost block" id="onb-back" hidden>← Back</button>
 </section>
 
-<!-- APP -->
+<!-- ============ MAIN APP ============ -->
 <div id="view-app" hidden>
   <header class="topbar">
     <div class="logo">S</div>
@@ -219,7 +249,7 @@ button{font:inherit;cursor:pointer}
   </nav>
 </div>
 
-<!-- ADMIN -->
+<!-- ============ ADMIN ============ -->
 <div id="view-admin" class="admin-shell" hidden>
   <aside class="admin-side">
     <div class="logo" style="margin-bottom:14px">S</div>
@@ -236,7 +266,40 @@ button{font:inherit;cursor:pointer}
   <section class="admin-main" id="admin-main"></section>
 </div>
 
+<!-- ============ EARLY ERROR HOOK (runs before module) ============ -->
+<script>
+(function(){
+  const errBox = document.getElementById('boot-error');
+  function showError(msg){
+    if(!errBox) return;
+    errBox.hidden = false;
+    errBox.innerHTML = '<b>⚠️ App error</b>' + String(msg).replace(/</g,'&lt;');
+  }
+  window.addEventListener('error', e => showError(e.message || 'Unknown error'));
+  window.addEventListener('unhandledrejection', e => {
+    const r = e.reason;
+    showError((r && (r.message || r.code)) || String(r));
+  });
+  // 8-second timeout: if module never runs, show helpful message
+  setTimeout(() => {
+    if(!window.__sajilo_booted){
+      showError(
+        'App did not start after 8 seconds.\n' +
+        'Possible reasons:\n' +
+        '1. Page opened via file:// — must use https:// (GitHub Pages URL).\n' +
+        '2. Firebase SDK blocked by browser / network.\n' +
+        '3. Your domain is not authorized in Firebase Console.\n\n' +
+        'Open F12 → Console to see the exact error.'
+      );
+    }
+  }, 8000);
+  window.__showError = showError;
+})();
+</script>
+
+<!-- ============ MAIN APP MODULE ============ -->
 <script type="module">
+/* ---- Firebase imports (v10 modular) ---- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
@@ -249,7 +312,7 @@ import {
   arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ================= FIREBASE CONFIG ================= */
+/* ---- Config ---- */
 const firebaseConfig = {
   apiKey: "AIzaSyDK1wwahwoJxNAH_Iats2wrSMUA42jVhSI",
   authDomain: "loksewa-2083.firebaseapp.com",
@@ -260,11 +323,18 @@ const firebaseConfig = {
   measurementId: "G-D5RTD5R7B4"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
+let app, auth, db;
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  window.__sajilo_booted = true;
+} catch(e){
+  window.__showError('Firebase init failed: ' + (e.message || e));
+  throw e;
+}
 
-/* ================= CONSTANTS ================= */
+/* ---- Constants ---- */
 const ADMIN_EMAIL = "deepakrajpant978@gmail.com";
 
 const EXAMS = [
@@ -321,7 +391,7 @@ const DEMO_QUESTIONS = [
     correct:0, explanation:"Nepal covers 147,516 km².", memory:"147516 → 1+4+7+5+1+6 = 24." }
 ];
 
-/* ================= STATE ================= */
+/* ---- State ---- */
 let state = {
   user:null, profile:null, route:"home",
   currentSubject:null, currentChapter:null, currentTopic:null, currentLevel:1,
@@ -342,37 +412,64 @@ const toast = msg => {
   setTimeout(()=>el.remove(), 2600);
 };
 
-/* ================= AUTH ================= */
+/* ---- Hide boot loader ---- */
+function hideLoader(){
+  const l = document.getElementById('boot-loading');
+  if(l) l.remove();
+}
+
+/* ---- Auth UI toggle ---- */
 function showAuth(show=true){
   $("#view-auth").hidden = !show;
   $("#view-onboarding").hidden = true;
   $("#view-app").hidden = true;
   $("#view-admin").hidden = true;
+  hideLoader();
 }
+
 $("#to-signup").onclick = e => { e.preventDefault(); $("#form-login").hidden=true; $("#form-signup").hidden=false; };
 $("#to-login").onclick  = e => { e.preventDefault(); $("#form-signup").hidden=true; $("#form-login").hidden=false; };
 
+/* ---- Login ---- */
 $("#form-login").onsubmit = async e => {
   e.preventDefault();
   const err = $("#login-err"); err.hidden = true;
-  try{ await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-pass").value); }
-  catch(ex){ err.textContent = friendlyAuthError(ex); err.hidden = false; }
+  const btn = $("#login-btn");
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try{
+    await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-pass").value);
+  }catch(ex){
+    err.textContent = friendlyAuthError(ex); err.hidden = false;
+  }finally{
+    btn.disabled = false; btn.textContent = "Sign in";
+  }
 };
 
+/* ---- Signup ---- */
 $("#form-signup").onsubmit = async e => {
   e.preventDefault();
   const err = $("#signup-err"); err.hidden = true;
+  const btn = $("#signup-btn");
+  btn.disabled = true; btn.textContent = "Creating…";
   try{
     const cred = await createUserWithEmailAndPassword(auth, $("#su-email").value.trim(), $("#su-pass").value);
     await updateProfile(cred.user, { displayName: $("#su-name").value.trim() });
     await setDoc(doc(db,"users",cred.user.uid), {
-      name: $("#su-name").value.trim(), email: cred.user.email,
-      selectedExams:[], selectedSubjects:[], onboardingDone:false,
+      name: $("#su-name").value.trim(),
+      email: cred.user.email,
+      selectedExams: [],
+      selectedSubjects: [],
+      onboardingDone: false,
       createdAt: serverTimestamp()
     }, { merge:true });
-  }catch(ex){ err.textContent = friendlyAuthError(ex); err.hidden=false; }
+  }catch(ex){
+    err.textContent = friendlyAuthError(ex); err.hidden = false;
+  }finally{
+    btn.disabled = false; btn.textContent = "Create account";
+  }
 };
 
+/* ---- Google ---- */
 const googleProvider = new GoogleAuthProvider();
 async function googleAuth(){
   try{
@@ -383,7 +480,7 @@ async function googleAuth(){
       await setDoc(ref, {
         name: r.user.displayName || "Student",
         email: r.user.email,
-        selectedExams:[], selectedSubjects:[], onboardingDone:false,
+        selectedExams: [], selectedSubjects: [], onboardingDone:false,
         createdAt: serverTimestamp()
       });
     }
@@ -401,25 +498,31 @@ function friendlyAuthError(e){
     "auth/email-already-in-use":"That email is already registered. Try signing in.",
     "auth/weak-password":"Password must be at least 6 characters.",
     "auth/popup-closed-by-user":"Sign-in window closed. Please try again.",
-    "auth/operation-not-allowed":"This sign-in method is disabled. Enable it in Firebase Console.",
-    "auth/unauthorized-domain":"This domain is not authorized in Firebase Console → Authentication → Settings → Authorized domains."
+    "auth/operation-not-allowed":"This sign-in method is disabled. Enable it in Firebase Console → Authentication → Sign-in method.",
+    "auth/unauthorized-domain":"This domain is not authorized. Add it in Firebase Console → Authentication → Settings → Authorized domains.",
+    "auth/network-request-failed":"Network error. Check your internet connection."
   })[e.code] || e.message || "Something went wrong.";
 }
 
-/* ================= AUTH STATE ================= */
+/* ---- Auth state ---- */
 onAuthStateChanged(auth, async user => {
-  state.user = user;
-  if(!user){ showAuth(true); return; }
-  const snap = await getDoc(doc(db,"users",user.uid));
-  state.profile = snap.exists() ? snap.data() : {
-    name:user.displayName||"Student", email:user.email,
-    selectedExams:[], selectedSubjects:[], onboardingDone:false
-  };
-  if(!state.profile.onboardingDone) showOnboarding();
-  else { showApp(); navigate("home"); }
+  try{
+    state.user = user;
+    if(!user){ showAuth(true); return; }
+    const snap = await getDoc(doc(db,"users",user.uid));
+    state.profile = snap.exists() ? snap.data() : {
+      name: user.displayName||"Student", email:user.email,
+      selectedExams:[], selectedSubjects:[], onboardingDone:false
+    };
+    if(!state.profile.onboardingDone) showOnboarding();
+    else { showApp(); navigate("home"); }
+  }catch(e){
+    window.__showError('Auth state error: ' + (e.message || e));
+    showAuth(true);
+  }
 });
 
-/* ================= ONBOARDING ================= */
+/* ---- Onboarding ---- */
 function showOnboarding(){
   showAuth(false);
   $("#view-onboarding").hidden = false;
@@ -480,12 +583,12 @@ $("#onb-continue").onclick = async () => {
     state.profile = { ...state.profile, selectedExams:st.exams, selectedSubjects:st.subjects, onboardingDone:true };
     showApp(); navigate("home");
   }catch(e){
-    toast("Could not save. Please retry.");
+    toast("Could not save: " + (e.message||e));
     btn.disabled = false; btn.textContent = "Save subjects & open dashboard";
   }
 };
 
-/* ================= APP SHELL ================= */
+/* ---- App shell ---- */
 function showApp(){
   showAuth(false);
   $("#view-onboarding").hidden = true;
@@ -519,7 +622,7 @@ $("#btn-theme").onclick = () => {
 };
 $("#btn-profile").onclick = () => navigate("profile");
 
-/* ================= HOME ================= */
+/* ---- Home ---- */
 async function renderHome(){
   const p = state.profile || {};
   const subjects = (p.selectedSubjects||[]).map(id=>SUBJECT_CATALOG.find(s=>s.id===id)).filter(Boolean);
@@ -568,7 +671,7 @@ async function renderHome(){
 }
 function bindDataNav(){ $$("[data-nav]").forEach(a=>a.onclick=e=>{e.preventDefault(); navigate(a.dataset.nav);}); }
 
-/* ================= SUBJECTS ================= */
+/* ---- Subjects ---- */
 function renderSubjects(){
   const p = state.profile || {};
   const subjects = (p.selectedSubjects||[]).map(id=>SUBJECT_CATALOG.find(s=>s.id===id)).filter(Boolean);
@@ -616,7 +719,7 @@ async function removeSubject(id){
   renderSubjects();
 }
 
-/* ================= CHAPTER / TOPIC ================= */
+/* ---- Chapter / Topic ---- */
 function renderChapter(){
   const subj = SUBJECT_CATALOG.find(s=>s.id===state.currentSubject);
   if(!subj){ navigate("subjects"); return; }
@@ -689,7 +792,7 @@ function renderTopic(){
   $("#practice-topic").onclick = () => startPractice(state.currentTopic, state.currentLevel);
 }
 
-/* ================= READER ================= */
+/* ---- Reader ---- */
 function renderReader(){
   const m = DEMO_MATERIALS[state.currentMaterial];
   if(!m){ navigate("topic"); return; }
@@ -764,7 +867,7 @@ async function handleReaderAction(act, materialId){
   }
 }
 
-/* ================= PRACTICE ================= */
+/* ---- Practice ---- */
 function startPractice(topicId, level){
   const qs = DEMO_QUESTIONS.filter(q=>q.topic===topicId && q.level===level);
   if(!qs.length){ toast("No practice questions for this level yet."); return; }
@@ -818,7 +921,7 @@ async function recordPracticeAnswer(q, correct){
   if(!correct) await updateDoc(ref, { revisionQueue: arrayUnion(q.id), updatedAt: serverTimestamp() });
 }
 
-/* ================= TESTS ================= */
+/* ---- Tests ---- */
 function renderTests(){
   main.innerHTML = `
     <h2 style="margin:0">Tests</h2>
@@ -892,7 +995,7 @@ async function submitTest(){
   $("#back-tests").onclick = () => { state.test.active = false; navigate("tests"); };
 }
 
-/* ================= REVISION ================= */
+/* ---- Revision ---- */
 async function countDueRevision(){
   try{
     const q = query(collection(db,"users",state.user.uid,"revision"),
@@ -972,7 +1075,7 @@ async function rateRevision(rating){
   } else renderRevisionCard();
 }
 
-/* ================= SAVED ================= */
+/* ---- Saved ---- */
 function renderSaved(){
   const p = state.profile||{};
   const all = [...new Set([...(p.favourites||[]), ...(p.important||[]), ...(p.revisionQueue||[])])];
@@ -992,7 +1095,7 @@ function renderSaved(){
   bindDataNav();
 }
 
-/* ================= PROFILE ================= */
+/* ---- Profile ---- */
 function renderProfile(){
   const p = state.profile||{};
   main.innerHTML = `
@@ -1010,7 +1113,7 @@ function renderProfile(){
   if($("#open-admin")) $("#open-admin").onclick = openAdmin;
 }
 
-/* ================= ADMIN ================= */
+/* ---- Admin ---- */
 function openAdmin(){
   if(state.user?.email !== ADMIN_EMAIL){ toast("Admin access only."); return; }
   $("#view-app").hidden = true;
@@ -1043,14 +1146,15 @@ function renderAdminTab(tab){
   if(tab==="settings") el.innerHTML = `<h2>Settings</h2><p class="muted">Admin email: <b>${ADMIN_EMAIL}</b></p><p class="small">Firestore rules check <code>request.auth.token.email</code>.</p>`;
 }
 
-/* ================= BOOT ================= */
-const savedTheme = localStorage.getItem("sajilo-theme");
-if(savedTheme==="dark") document.documentElement.setAttribute("data-theme","dark");
-
+/* ---- Global nav handler ---- */
 document.addEventListener("click", e=>{
   const a = e.target.closest("[data-nav]");
   if(a){ e.preventDefault(); navigate(a.dataset.nav); }
 });
+
+/* ---- Theme boot ---- */
+const savedTheme = localStorage.getItem("sajilo-theme");
+if(savedTheme==="dark") document.documentElement.setAttribute("data-theme","dark");
 </script>
 </body>
 </html>
