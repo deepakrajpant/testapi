@@ -44,7 +44,6 @@ const S = {
   user: null, profile: null, isOwner: false, isAdmin: false,
   profileLoaded: false, profilePromise: null,
   exams: [], selectedSubjects: [], routeToken: 0, pageCleanup: null,
-  // admin form state
   editOptions: [], editCorrectId: "a", editResources: [],
   practice: null
 };
@@ -525,7 +524,7 @@ async function renderHome(token) {
     <div class="card">
       <div class="row-between mb-8"><h2 class="card-title mb-0">My selected subjects</h2><a class="btn btn-small" href="#/my-subjects">Manage</a></div>
       ${S.selectedSubjects.length
-        ? `<div class="grid grid-2">${S.selectedSubjects.slice(0, 4).map(s => `<a class="card" style="box-shadow:none;text-decoration:none;color:var(--text)" href="#/subject/${encodeURIComponent(s.id)}">
+        ? `<div class="grid grid-2">${S.selectedSubjects.slice(0, 4).map(s => `<a class="card clickable" style="box-shadow:none" href="#/subject/${encodeURIComponent(s.id)}">
             <strong>${escapeHtml(s.title || "Subject")}</strong>
             <p class="small muted mb-0 mt-8">Open to see chapters →</p>
           </a>`).join("")}</div>`
@@ -610,36 +609,82 @@ async function renderAllSubjects(token) {
   }));
 }
 
-/* ============ MY SUBJECTS ============ */
+/* ============ MY SUBJECTS (fix #1 & #5) ============ */
 async function renderMySubjects(token) {
   setPage(spinner("Loading…"));
   await loadSelectedSubjects();
+
+  // FIX #5: Filter out subjects that no longer exist or are archived
+  const validSubjects = [];
+  for (const sel of S.selectedSubjects) {
+    try {
+      const snap = await getDoc(doc(db, "subjects", sel.id));
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.status !== "archived") {
+          validSubjects.push({ id: snap.id, title: d.title, description: d.description, status: d.status });
+        } else {
+          try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sel.id)); } catch {}
+        }
+      } else {
+        // Admin deleted it — clean up
+        try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sel.id)); } catch {}
+      }
+    } catch (err) { console.warn("Verify subject failed", err); }
+  }
+
   if (isStale(token)) return;
 
   setPage(`
-    <div class="page-head"><div><h1 class="page-title">My Subjects</h1>
-    <p class="page-sub">Your selected subjects.</p></div>
-    <a class="btn btn-primary" href="#/all-subjects">+ Add more</a></div>
-    ${S.selectedSubjects.length === 0
+    <div class="page-head">
+      <div><h1 class="page-title">My Subjects</h1><p class="page-sub">Tap a card to open</p></div>
+      <button class="btn btn-primary" id="manageSubjectsBtn">⚙ Manage Subjects</button>
+    </div>
+    ${validSubjects.length === 0
       ? emptyState("No subjects yet", "Add subjects from All Subjects page.", `<a class="btn btn-primary" href="#/all-subjects">Browse all subjects</a>`)
-      : `<div class="grid grid-2">${S.selectedSubjects.map(s => `
-          <div class="card">
-            <div class="row-between"><strong>${escapeHtml(s.title || "Subject")}</strong>
-              <button class="btn btn-small btn-danger" data-remove="${escapeHtml(s.id)}">Remove</button>
-            </div>
-            <p class="small muted mt-8 mb-8">Open to see chapters and study materials.</p>
-            <a class="btn btn-small btn-primary" href="#/subject/${encodeURIComponent(s.id)}">Open</a>
-          </div>`).join("")}</div>`}
+      : `<div class="grid grid-2">${validSubjects.map(s => `
+        <a class="card clickable" href="#/subject/${encodeURIComponent(s.id)}">
+          <div class="row-between">
+            <strong style="font-size:1.02rem">${escapeHtml(s.title || "Subject")}</strong>
+            ${s.status === "published" ? '<span class="badge green">Active</span>' : '<span class="badge">Draft</span>'}
+          </div>
+          <p class="small muted mt-8 mb-0">${escapeHtml(s.description || "Tap to see chapters →")}</p>
+        </a>`).join("")}</div>`}
   `);
 
-  $$("[data-remove]").forEach(b => b.addEventListener("click", async () => {
-    if (!(await confirmDialog("Remove this subject from My Subjects?", { danger: true, confirmText: "Remove" }))) return;
-    try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.remove)); router(); }
-    catch (err) { toast(friendlyError(err, "removing"), "error"); }
+  $("#manageSubjectsBtn")?.addEventListener("click", () => openManageSubjects(validSubjects));
+}
+
+function openManageSubjects(subjects) {
+  openModal(`
+    <div class="modal-head"><h2>Manage Subjects</h2><button class="modal-close" data-modal-close>✕</button></div>
+    <p class="small muted">Remove subjects you no longer want to study. Your reading/practice history is preserved.</p>
+    <div class="stack mt-16">
+      ${subjects.length === 0
+        ? '<p class="small muted">No subjects in your list.</p>'
+        : subjects.map(s => `
+          <div class="card" style="box-shadow:none;margin:0">
+            <div class="row-between">
+              <strong>${escapeHtml(s.title || "Subject")}</strong>
+              <button class="btn btn-small btn-danger" data-remove-mgmt="${escapeHtml(s.id)}" data-remove-title="${escapeHtml(s.title || "")}">Remove</button>
+            </div>
+          </div>`).join("")}
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" data-modal-close>Done</button></div>
+  `, true);
+
+  $$("[data-remove-mgmt]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog(`Remove "${b.dataset.removeTitle}" from My Subjects?`, { danger: true, confirmText: "Remove" }))) return;
+    try {
+      await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.removeMgmt));
+      toast("Removed.", "success");
+      closeModal();
+      router();
+    } catch (err) { toast(friendlyError(err, "removing"), "error"); }
   }));
 }
 
-/* ============ SUBJECT DETAIL (student) ============ */
+/* ============ SUBJECT DETAIL (fix #2 — clickable chapter cards) ============ */
 async function renderSubjectDetail(id, token) {
   if (!id) return setPage(errorState("Not found", "No subject specified."));
   setPage(spinner("Loading subject…"));
@@ -647,7 +692,8 @@ async function renderSubjectDetail(id, token) {
   try { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) subject = { id: s.id, ...s.data() }; }
   catch (err) { return setPage(errorState("Error", friendlyError(err, "loading subject"))); }
   if (isStale(token)) return;
-  if (!subject) return setPage(emptyState("Subject not found", "May be unpublished."));
+  if (!subject) return setPage(emptyState("Subject not found", "May be unpublished or deleted."));
+  if (subject.status === "archived") return setPage(emptyState("Subject unavailable", "This subject has been archived by the administrator."));
 
   let chapters = [];
   try {
@@ -661,15 +707,39 @@ async function renderSubjectDetail(id, token) {
     <p class="page-sub">${escapeHtml(subject.description || "")}</p></div></div>
     ${chapters.length === 0
       ? emptyState("No chapters yet", "The administrator hasn't added published chapters to this subject yet.")
-      : `<div class="stack">${chapters.map(c => `<div class="card">
-          <div class="row-between"><div><strong>${c.chapterNumber ? `Chapter ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
-          <p class="small muted mb-0 mt-8">${escapeHtml(c.description || "")}</p></div>
-          <a class="btn btn-primary btn-small" href="#/chapter/${encodeURIComponent(c.id)}">Open</a></div>
-        </div>`).join("")}</div>`}
+      : `<div class="stack">${chapters.map(c => `
+          <a class="card clickable" href="#/chapter/${encodeURIComponent(c.id)}">
+            <div class="row-between">
+              <div style="flex:1">
+                <strong style="font-size:1.02rem">${c.chapterNumber ? `Chapter ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
+                <p class="small muted mb-0 mt-8">${escapeHtml(c.description || "Tap to see study materials and practice MCQs →")}</p>
+              </div>
+            </div>
+          </a>`).join("")}</div>`}
   `);
 }
 
-/* ============ CHAPTER DETAIL (student) ============ */
+/* ============ CHAPTER DETAIL (fix #3 — inline materials + icon resources) ============ */
+function renderResourceIcon(r) {
+  const url = safeUrl(r.url);
+  if (!url) return "";
+  let icon = "🔗";
+  let label = r.title || "Link";
+  if (r.type === "youtube" || url.includes("youtube") || url.includes("youtu.be")) {
+    icon = "▶️";
+    if (!r.title) label = "YouTube";
+  } else if (r.type === "pdf" || url.toLowerCase().endsWith(".pdf")) {
+    icon = "📄";
+    if (!r.title) label = "PDF";
+  } else if (r.type === "website") {
+    icon = "🌐";
+    if (!r.title) label = "Website";
+  }
+  return `<a class="resource-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(label)}">
+    <span class="icon">${icon}</span><span>${escapeHtml(label)}</span>
+  </a>`;
+}
+
 async function renderChapterDetail(id, token) {
   if (!id) return setPage(errorState("Not found", "No chapter specified."));
   setPage(spinner("Loading chapter…"));
@@ -679,13 +749,15 @@ async function renderChapterDetail(id, token) {
   if (isStale(token)) return;
   if (!chapter) return setPage(emptyState("Chapter not found", "May be unpublished."));
 
-  const [matSnap, qSnap] = await Promise.all([
+  const [matSnap, qSnap, progSnap] = await Promise.all([
     getDocs(query(collection(db, "materials"), where("chapterId","==",id), where("status","==","published"), limit(100))).catch(() => null),
-    getDocs(query(collection(db, "questions"), where("chapterId","==",id), where("status","==","published"), limit(500))).catch(() => null)
+    getDocs(query(collection(db, "questions"), where("chapterId","==",id), where("status","==","published"), limit(500))).catch(() => null),
+    getDocs(query(collection(db, "users", S.user.uid, "materialProgress"), where("chapterId","==",id), limit(100))).catch(() => null)
   ]);
   if (isStale(token)) return;
   const materials = (matSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
   const questions = (qSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+  const readIds = new Set((progSnap?.docs || []).filter(d => d.data().status === "read").map(d => d.data().materialId));
   const byLevel = { L1: questions.filter(q => q.level === "L1").length, L2: questions.filter(q => q.level === "L2").length, L3: questions.filter(q => q.level === "L3").length };
 
   // Siblings for prev/next
@@ -698,30 +770,45 @@ async function renderChapterDetail(id, token) {
   const prev = idx > 0 ? siblings[idx - 1] : null;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
+  // Render each material inline with full HTML
+  const materialsHtml = materials.length === 0
+    ? `<p class="small muted">No published study materials in this chapter yet.</p>`
+    : materials.map(m => {
+        const html = m.html ? sanitizeHtml(m.html) : (m.content ? sanitizeHtml(m.content) : "");
+        const resources = Array.isArray(m.resources) ? m.resources : [];
+        const isRead = readIds.has(m.id);
+        return `<div class="material-inline" id="mat-${escapeHtml(m.id)}">
+          <div class="material-inline-header">
+            <div>
+              <h3>${escapeHtml(m.title || "Study Material")}</h3>
+              <div class="row mt-8">
+                <span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span>
+                ${m.importance && m.importance !== "normal" ? `<span class="badge ${escapeHtml(m.importance)}">${escapeHtml(m.importance)}</span>` : ""}
+              </div>
+            </div>
+            <button class="material-read-btn ${isRead ? "read" : ""}" data-mark-read="${escapeHtml(m.id)}" type="button">
+              ${isRead ? "✓ Read" : "Mark as read"}
+            </button>
+          </div>
+          <div class="reader-content">${html || '<p class="muted small">No content.</p>'}</div>
+          ${resources.length ? `<div class="resource-icons">${resources.map(renderResourceIcon).join("")}</div>` : ""}
+        </div>`;
+      }).join("");
+
   setPage(`
     <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <a href="#/subject/${encodeURIComponent(chapter.subjectId || "")}">Subject</a> / <span>${escapeHtml(chapter.title || "Chapter")}</span></div>
     <div class="page-head"><div><h1 class="page-title">${escapeHtml(chapter.title || "Chapter")}</h1>
     <p class="page-sub">${escapeHtml(chapter.description || "")}</p></div></div>
 
     <div class="card mb-16">
-      <h2 class="card-title">Study Materials (${materials.length})</h2>
-      ${materials.length === 0
-        ? `<p class="small muted">No published materials.</p>`
-        : materials.map(m => `<div class="list-item">
-            <div class="list-item-main">
-              <p class="list-item-title">${escapeHtml(m.title || "Material")}</p>
-              <div class="list-item-meta">
-                <span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span>
-                ${m.importance && m.importance !== "normal" ? `<span class="badge ${escapeHtml(m.importance)}">${escapeHtml(m.importance)}</span>` : ""}
-              </div>
-            </div>
-            <a class="btn btn-small" href="#/material/${encodeURIComponent(m.id)}">Read</a>
-          </div>`).join("")}
+      <h2 class="card-title">📖 Study Materials (${materials.length})</h2>
+      <p class="small muted mb-16">All materials are shown below. Click any YouTube/PDF/Website link to open in a new tab.</p>
+      ${materialsHtml}
     </div>
 
     <div class="card">
-      <h2 class="card-title">Practice MCQs</h2>
-      <div class="grid grid-3">
+      <h2 class="card-title">❓ Practice MCQs</h2>
+      <div class="grid grid-3 mb-16">
         ${["L1","L2","L3"].map(l => `<div class="card" style="box-shadow:none;text-align:center">
           <span class="badge ${l}">${levelLabel(l)}</span>
           <p class="stat-value mt-8">${byLevel[l]}</p>
@@ -729,7 +816,7 @@ async function renderChapterDetail(id, token) {
           <a class="btn btn-small ${byLevel[l] ? "btn-primary" : ""}" href="#/practice?chapter=${encodeURIComponent(id)}&level=${l}" ${byLevel[l] ? "" : 'style="opacity:.5;pointer-events:none"'}>Practice</a>
         </div>`).join("")}
       </div>
-      <div class="mt-16"><a class="btn btn-primary" href="#/practice?chapter=${encodeURIComponent(id)}">Practice all (${questions.length})</a></div>
+      <a class="btn btn-primary btn-block" href="#/practice?chapter=${encodeURIComponent(id)}">Practice All (${questions.length} questions)</a>
     </div>
 
     <div class="row mt-16" style="justify-content:space-between">
@@ -737,9 +824,28 @@ async function renderChapterDetail(id, token) {
       ${next ? `<a class="btn" href="#/chapter/${encodeURIComponent(next.id)}">${escapeHtml(next.title || "Next")} →</a>` : "<span></span>"}
     </div>
   `);
+
+  // Mark-read buttons
+  $$("[data-mark-read]").forEach(btn => btn.addEventListener("click", async () => {
+    const mid = btn.dataset.markRead;
+    btn.disabled = true;
+    try {
+      await setDoc(doc(db, "users", S.user.uid, "materialProgress", mid), {
+        materialId: mid, chapterId: id, subjectId: chapter.subjectId || "",
+        status: "read", readAt: serverTimestamp(), updatedAt: serverTimestamp()
+      }, { merge: true });
+      await touchSession({ materialsRead: 1 });
+      btn.classList.add("read");
+      btn.textContent = "✓ Read";
+      toast("Marked as read.", "success");
+    } catch (err) {
+      toast(friendlyError(err, "saving progress"), "error");
+      btn.disabled = false;
+    }
+  }));
 }
 
-/* ============ MATERIAL READER ============ */
+/* ============ MATERIAL READER (kept for direct link) ============ */
 async function renderMaterial(id, token) {
   if (!id) return setPage(errorState("Not found", "No material specified."));
   setPage(spinner("Loading…"));
@@ -764,20 +870,12 @@ async function renderMaterial(id, token) {
         </div>
       </div>
       <h1 class="page-title mt-16">${escapeHtml(m.title || "Study material")}</h1>
-      <div class="reader-content mt-16" id="readerContent">${html}</div>
+      <div class="reader-content mt-16">${html}</div>
+      ${resources.length ? `<div class="resource-icons">${resources.map(renderResourceIcon).join("")}</div>` : ""}
     </div>
-
-    ${resources.length ? `<div class="card"><h2 class="card-title">Resources</h2>
-      ${resources.map(r => {
-        const url = safeUrl(r.url);
-        if (!url) return "";
-        return `<div class="list-item"><div class="list-item-main"><p class="list-item-title">${escapeHtml(r.title || r.url)}</p><div class="list-item-meta">${escapeHtml(r.type || "link")}</div></div><a class="btn btn-small" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a></div>`;
-      }).join("")}
-    </div>` : ""}
-
     <div class="row mt-16 no-print">
-      <button class="btn btn-primary" id="markReadBtn">Mark as read</button>
-      <a class="btn" href="#/practice?chapter=${encodeURIComponent(m.chapterId || "")}&level=${encodeURIComponent(m.level || "L1")}">Practice MCQs</a>
+      <a class="btn" href="#/chapter/${encodeURIComponent(m.chapterId || "")}">← Back to chapter</a>
+      <a class="btn btn-primary" href="#/practice?chapter=${encodeURIComponent(m.chapterId || "")}&level=${encodeURIComponent(m.level || "L1")}">Practice MCQs</a>
     </div>
   `);
 
@@ -786,20 +884,9 @@ async function renderMaterial(id, token) {
     const next = b.dataset.font === "+" ? Math.min(24, cur + 1) : Math.max(14, cur - 1);
     document.documentElement.style.setProperty("--reader-size", `${next}px`);
   }));
-
-  $("#markReadBtn")?.addEventListener("click", async () => {
-    try {
-      await setDoc(doc(db, "users", S.user.uid, "materialProgress", id), {
-        materialId: id, title: m.title || "", chapterId: m.chapterId || "", subjectId: m.subjectId || "",
-        level: m.level || "L1", status: "read", readAt: serverTimestamp(), updatedAt: serverTimestamp()
-      }, { merge: true });
-      await touchSession({ materialsRead: 1 });
-      toast("Marked as read.", "success");
-    } catch (err) { toast(friendlyError(err, "saving progress"), "error"); }
-  });
 }
 
-/* ============ PRACTICE ============ */
+/* ============ PRACTICE (fix #4 — submit + results) ============ */
 async function renderPractice(params, token) {
   setPage(spinner("Loading questions…"));
   const chapterId = params.get("chapter");
@@ -825,7 +912,7 @@ async function renderPractice(params, token) {
   if (!questions.length) return setPage(emptyState("No questions", "No published questions match this scope.", `<a class="btn" href="#/all-subjects">Browse subjects</a>`));
 
   questions = questions.sort(() => Math.random() - 0.5);
-  S.practice = { questions, index: 0, selected: null, revealed: false, recorded: new Set() };
+  S.practice = { questions, index: 0, answers: new Map(), submitted: false, recorded: new Set() };
   renderPracticeQuestion();
   bindPracticeKeys();
 }
@@ -834,11 +921,18 @@ function renderPracticeQuestion() {
   const p = S.practice;
   if (!p) return;
   const q = p.questions[p.index];
+  const selected = p.answers.get(q.id);
   const options = q.options || [];
+  const answeredCount = p.answers.size;
 
   setPage(`
-    <div class="page-head"><div><h1 class="page-title">Practice</h1>
-    <p class="page-sub">Q ${p.index + 1} of ${p.questions.length}</p></div><a class="btn" href="#/all-subjects">Back</a></div>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Practice MCQs</h1>
+        <p class="page-sub">Question ${p.index + 1} of ${p.questions.length} · ${answeredCount} answered</p>
+      </div>
+      <button class="btn btn-primary" id="submitPractice">Submit & View Results</button>
+    </div>
     <div class="question-card" style="max-width:840px;margin:0 auto">
       <div class="card">
         <div class="row mb-16">
@@ -849,22 +943,15 @@ function renderPracticeQuestion() {
         <div class="option-list" id="optList">
           ${options.map((opt, i) => {
             const key = opt.id || String.fromCharCode(97 + i);
-            const sel = p.selected === key;
-            const correct = p.revealed && q.correctOptionId === key;
-            const wrong = p.revealed && sel && q.correctOptionId !== key;
-            return `<button class="option-btn ${sel ? "selected" : ""} ${correct ? "correct" : ""} ${wrong ? "wrong" : ""}" data-opt="${escapeHtml(key)}" type="button">
+            const sel = selected === key;
+            return `<button class="option-btn ${sel ? "selected" : ""}" data-opt="${escapeHtml(key)}" type="button">
               <span class="option-key">${String.fromCharCode(65 + i)}</span>
               <span>${escapeHtml(opt.text || "")}</span>
             </button>`;
           }).join("")}
         </div>
-        ${p.revealed ? `<div class="explanation-box">
-          <h4>Correct answer: ${escapeHtml(options.find(o => o.id === q.correctOptionId)?.text || "—")}</h4>
-          <p>${sanitizeHtml(q.explanation || "No explanation.")}</p>
-        </div>` : ""}
         <div class="row mt-16" style="justify-content:space-between">
           <button class="btn" id="prevBtn" ${p.index === 0 ? "disabled" : ""}>← Previous</button>
-          <button class="btn btn-primary" id="checkBtn">${p.revealed ? "Hide" : "Check Answer"}</button>
           <button class="btn" id="nextBtn" ${p.index >= p.questions.length - 1 ? "disabled" : ""}>Next →</button>
         </div>
       </div>
@@ -872,32 +959,133 @@ function renderPracticeQuestion() {
   `);
 
   $$("[data-opt]").forEach(b => b.addEventListener("click", () => {
-    if (p.revealed) return;
-    p.selected = b.dataset.opt;
+    p.answers.set(q.id, b.dataset.opt);
     renderPracticeQuestion();
   }));
-  $("#checkBtn")?.addEventListener("click", async () => {
-    if (p.revealed) { p.revealed = false; renderPracticeQuestion(); return; }
-    if (!p.selected) return toast("Select an option.", "error");
-    p.revealed = true;
-    if (!p.recorded.has(q.id)) { p.recorded.add(q.id); await recordAttempt(q, p.selected); }
-    renderPracticeQuestion();
-  });
-  $("#prevBtn")?.addEventListener("click", () => { if (p.index > 0) { p.index--; p.selected = null; p.revealed = false; renderPracticeQuestion(); } });
-  $("#nextBtn")?.addEventListener("click", () => { if (p.index < p.questions.length - 1) { p.index++; p.selected = null; p.revealed = false; renderPracticeQuestion(); } });
+  $("#prevBtn")?.addEventListener("click", () => { if (p.index > 0) { p.index--; renderPracticeQuestion(); } });
+  $("#nextBtn")?.addEventListener("click", () => { if (p.index < p.questions.length - 1) { p.index++; renderPracticeQuestion(); } });
+  $("#submitPractice")?.addEventListener("click", () => submitPractice());
 }
 
 function bindPracticeKeys() {
   const handler = e => {
     if (["input","textarea","select"].includes((e.target.tagName || "").toLowerCase())) return;
-    const p = S.practice; if (!p) return;
+    const p = S.practice; if (!p || p.submitted) return;
     const k = e.key.toLowerCase();
-    if (k === "j" && p.index < p.questions.length - 1) { p.index++; p.selected = null; p.revealed = false; renderPracticeQuestion(); }
-    else if (k === "k" && p.index > 0) { p.index--; p.selected = null; p.revealed = false; renderPracticeQuestion(); }
-    else if (e.key === " ") { e.preventDefault(); $("#checkBtn")?.click(); }
+    if (k === "j" && p.index < p.questions.length - 1) { p.index++; renderPracticeQuestion(); }
+    else if (k === "k" && p.index > 0) { p.index--; renderPracticeQuestion(); }
+    else if (/^[1-6]$/.test(e.key)) {
+      const q = p.questions[p.index];
+      const opt = (q.options || [])[Number(e.key) - 1];
+      if (opt) { p.answers.set(q.id, opt.id || String.fromCharCode(97 + Number(e.key) - 1)); renderPracticeQuestion(); }
+    }
   };
   document.addEventListener("keydown", handler);
   S.pageCleanup = () => document.removeEventListener("keydown", handler);
+}
+
+async function submitPractice() {
+  const p = S.practice;
+  if (!p) return;
+  const unanswered = p.questions.filter(q => !p.answers.get(q.id)).length;
+  if (unanswered > 0) {
+    const ok = await confirmDialog(`${unanswered} question${unanswered === 1 ? "" : "s"} unanswered. Submit anyway?`, { confirmText: "Submit" });
+    if (!ok) return;
+  }
+  // Persist all attempts
+  for (const q of p.questions) {
+    const sel = p.answers.get(q.id);
+    if (sel && !p.recorded.has(q.id)) {
+      p.recorded.add(q.id);
+      await recordAttempt(q, sel);
+    }
+  }
+  p.submitted = true;
+  renderPracticeResults();
+}
+
+function renderPracticeResults() {
+  const p = S.practice;
+  if (!p) return;
+  let correct = 0, incorrect = 0, unanswered = 0;
+  p.questions.forEach(q => {
+    const sel = p.answers.get(q.id);
+    if (!sel) unanswered++;
+    else if (sel === q.correctOptionId) correct++;
+    else incorrect++;
+  });
+  const total = p.questions.length;
+  const pct = total ? Math.round((correct / total) * 100) : 0;
+
+  setPage(`
+    <div class="page-head">
+      <div><h1 class="page-title">Practice Results</h1>
+      <p class="page-sub">Review every question below.</p></div>
+      <div class="row">
+        <button class="btn" id="retryBtn">🔄 Retry</button>
+        <a class="btn btn-primary" href="#/all-subjects">Back to Subjects</a>
+      </div>
+    </div>
+
+    <div class="result-hero mb-16">
+      <div class="result-score">${pct}%</div>
+      <div class="result-status">${correct} of ${total} correct</div>
+    </div>
+
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card" style="background:var(--green);color:#fff;border:0">
+        <div class="stat-value">${correct}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Correct</div>
+      </div>
+      <div class="stat-card" style="background:var(--red);color:#fff;border:0">
+        <div class="stat-value">${incorrect}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Incorrect</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${unanswered}</div><div class="stat-label">Unanswered</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Detailed review — scroll to see all questions</h2>
+      ${p.questions.map((q, i) => {
+        const sel = p.answers.get(q.id);
+        const isCorrect = sel === q.correctOptionId;
+        const isWrong = sel && !isCorrect;
+        const statusText = !sel ? "Unanswered" : isCorrect ? "Correct" : "Incorrect";
+        const statusClass = !sel ? "" : isCorrect ? "green" : "red";
+        const options = q.options || [];
+        return `<div class="card mb-16" style="box-shadow:none">
+          <div class="row-between mb-8">
+            <strong>Q${i + 1}. ${escapeHtml(q.questionText || "")}</strong>
+            <span class="badge ${statusClass}">${statusText}</span>
+          </div>
+          <div class="option-list">
+            ${options.map((o, oi) => {
+              const key = o.id || String.fromCharCode(97 + oi);
+              const isRight = key === q.correctOptionId;
+              const isChosen = sel === key;
+              let cls = "result-neutral";
+              if (isRight) cls = "result-correct";
+              else if (isChosen && !isRight) cls = "result-wrong";
+              const marker = isRight ? " ✓ Correct answer" : (isChosen && !isRight ? " ✗ Your answer" : "");
+              return `<div class="option-btn ${cls}" style="cursor:default">
+                <span class="option-key">${String.fromCharCode(65 + oi)}</span>
+                <span>${escapeHtml(o.text || "")}${marker}</span>
+              </div>`;
+            }).join("")}
+          </div>
+          ${q.explanation ? `<div class="explanation-box"><h4>Explanation</h4><p>${sanitizeHtml(q.explanation)}</p></div>` : ""}
+        </div>`;
+      }).join("")}
+    </div>
+
+    <div class="row mt-16" style="justify-content:center">
+      <button class="btn btn-primary" id="retryBtn2">🔄 Retry Practice</button>
+      <a class="btn" href="#/all-subjects">Back to Subjects</a>
+    </div>
+  `);
+
+  $("#retryBtn")?.addEventListener("click", () => router());
+  $("#retryBtn2")?.addEventListener("click", () => router());
 }
 
 async function recordAttempt(q, selected) {
@@ -1052,7 +1240,6 @@ async function renderAdmin(segs, token) {
   setPage(errorState("Unknown admin section", "Section does not exist."));
 }
 
-/* ---- Admin: Subjects list ---- */
 async function renderAdminSubjects(token) {
   setPage(spinner("Loading subjects…"));
   const snap = await getDocs(query(collection(db, "subjects"), limit(300))).catch(() => null);
@@ -1084,7 +1271,7 @@ async function renderAdminSubjects(token) {
   $("#newSubjectEmpty")?.addEventListener("click", openNew);
   $$("[data-edit-sub]").forEach(b => b.addEventListener("click", () => openSubjectForm(b.dataset.editSub)));
   $$("[data-del-sub]").forEach(b => b.addEventListener("click", async () => {
-    if (!(await confirmDialog(`Delete subject "${b.dataset.delTitle}"? All chapters, materials and MCQs inside will remain orphaned in Firestore but will no longer be visible. This cannot be undone.`, { danger: true, confirmText: "Delete" }))) return;
+    if (!(await confirmDialog(`Delete subject "${b.dataset.delTitle}"? Chapters and MCQs will remain in Firestore but be hidden. This cannot be undone.`, { danger: true, confirmText: "Delete" }))) return;
     try {
       await deleteDoc(doc(db, "subjects", b.dataset.delSub));
       toast("Subject deleted.", "success");
@@ -1094,16 +1281,13 @@ async function renderAdminSubjects(token) {
 }
 
 function openSubjectForm(id) {
-  const fetchExisting = async () => {
-    if (!id) return {};
-    const s = await getDoc(doc(db, "subjects", id));
-    return s.exists() ? s.data() : {};
-  };
-  fetchExisting().then(existing => {
+  (async () => {
+    let existing = {};
+    if (id) { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) existing = s.data(); }
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} Subject</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
-        <div><label>Title <span class="required">*</span></label><input id="subTitle" value="${escapeHtml(existing.title || "")}" placeholder="e.g., General Knowledge"></div>
+        <div><label>Title <span class="required">*</span></label><input id="subTitle" value="${escapeHtml(existing.title || "")}"></div>
         <div><label>Code (optional)</label><input id="subCode" value="${escapeHtml(existing.code || "")}"></div>
         <div><label>Description</label><textarea id="subDesc">${escapeHtml(existing.description || "")}</textarea></div>
         <div><label>Order</label><input id="subOrder" type="number" value="${existing.order || 0}"></div>
@@ -1121,7 +1305,7 @@ function openSubjectForm(id) {
       btn.disabled = true; btn.textContent = "Saving…";
       try {
         const title = $("#subTitle").value.trim();
-        if (!title) { toast("Title is required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
         const data = {
           title, code: $("#subCode").value.trim(), description: $("#subDesc").value.trim(),
           order: Number($("#subOrder").value || 0), status: $("#subStatus").value,
@@ -1139,10 +1323,9 @@ function openSubjectForm(id) {
         btn.disabled = false; btn.textContent = "Save";
       }
     };
-  });
+  })();
 }
 
-/* ---- Admin: Subject detail (manage chapters) ---- */
 async function renderAdminSubjectDetail(subjectId, token) {
   if (!subjectId) return setPage(errorState("Not found", "No subject ID."));
   setPage(spinner("Loading…"));
@@ -1226,7 +1409,6 @@ function openChapterForm(subjectId, id) {
   })();
 }
 
-/* ---- Admin: Chapter detail (materials + MCQs) ---- */
 async function renderAdminChapterDetail(chapterId, token) {
   if (!chapterId) return setPage(errorState("Not found", "No chapter ID."));
   setPage(spinner("Loading chapter…"));
@@ -1299,15 +1481,13 @@ async function renderAdminChapterDetail(chapterId, token) {
       }));
       $("#matImportBtn").onclick = () => $("#matImportFile").click();
       $("#matImportFile").onchange = async e => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const file = e.target.files[0]; if (!file) return;
         try {
           const text = await file.text();
           const parsed = JSON.parse(text);
           const items = Array.isArray(parsed) ? parsed : (parsed.materials || [parsed]);
           if (!items.length) return toast("No materials found.", "error");
-          const ok = await confirmDialog(`Import ${items.length} material(s) into this chapter?`, { confirmText: "Import" });
-          if (!ok) return;
+          if (!(await confirmDialog(`Import ${items.length} material(s) into this chapter?`, { confirmText: "Import" }))) return;
           for (const m of items) {
             const ref = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
             await setDoc(ref, {
@@ -1380,8 +1560,7 @@ async function renderAdminChapterDetail(chapterId, token) {
       $("#addQBtn").onclick = () => openQuestionForm(chapterId, null, chapter.subjectId || "");
       $("#qImportBtn").onclick = () => $("#qImportFile").click();
       $("#qImportFile").onchange = async e => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const file = e.target.files[0]; if (!file) return;
         try {
           const text = await file.text();
           const parsed = JSON.parse(text);
@@ -1395,7 +1574,7 @@ async function renderAdminChapterDetail(chapterId, token) {
           });
           const previewHtml = `<div class="card" style="box-shadow:none">
             <h3>Preview: ${items.length} MCQ(s)</h3>
-            ${errors.length ? `<div class="reader-callout" style="border-color:var(--red);background:#fee2e2;color:#991b1b"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
+            ${errors.length ? `<div style="padding:12px;background:#fee2e2;color:#991b1b;border-radius:12px"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
             <p class="small muted">They will be linked to chapter: <strong>${escapeHtml(chapter.title || "")}</strong></p>
             <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="confirmQImport" ${errors.length ? "disabled" : ""}>Import ${items.length} MCQ(s)</button></div>
           </div>`;
@@ -1435,7 +1614,6 @@ async function renderAdminChapterDetail(chapterId, token) {
   renderTab("materials");
 }
 
-/* ---- Admin: Material form ---- */
 function openMaterialForm(chapterId, id, subjectId) {
   (async () => {
     let ex = {};
@@ -1534,7 +1712,6 @@ async function previewMaterial(id) {
   `, true);
 }
 
-/* ---- Admin: Question form ---- */
 function openQuestionForm(chapterId, id, subjectId) {
   (async () => {
     let ex = {};
@@ -1645,7 +1822,6 @@ async function previewQuestion(id) {
   `, true);
 }
 
-/* ---- Admin: Import/Export full subject ---- */
 function renderAdminImport(token) {
   setPage(`
     <div class="page-head"><div><h1 class="page-title">JSON Import / Export</h1>
