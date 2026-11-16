@@ -1,635 +1,1871 @@
-/* DELIVERY CHECKS
-   Executed: 113 development checks (63 + 12 + 14 + 9 + 15).
-   Scope: source syntax/imports, learning/scoring logic, in-memory Firestore,
-   auth fixtures, synthetic-DOM routing and the delivered JavaScript bundle.
-   Also executed: 23 real Chrome browser checks with intercepted Firebase
-   fixtures: account actions, permission-error recovery, reader search, saved
-   items, mock submission/scoring, refresh recovery and Retry Wrong.
-   Responsive checks cover 320, 360, 390, 768 and 1440px; primary mobile account
-   controls have 44px touch targets.
-   Live Firebase, Rules compilation/emulator and GitHub Pages deployment have
-   NOT been verified. Browser fixtures do not prove backend authorization.
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+  createUserWithEmailAndPassword, signOut, GoogleAuthProvider,
+  signInWithPopup, signInWithRedirect, getRedirectResult,
+  sendPasswordResetEmail, sendEmailVerification, reload, updateProfile
+} from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+import {
+  initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
+  updateDoc, deleteDoc, query, where, orderBy, limit,
+  serverTimestamp, writeBatch, Timestamp
+} from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-   MANUAL LIVE ACCEPTANCE TESTS
-   1. Enable the actual Auth providers/domain, register a separate student,
-      verify email, reset the password, and sign out.
-   2. Choose NTC + NEA with a shared subject; remove/re-add it without losing
-      progress. Publish valid materials and questions from the owner account.
-   3. Take a live practice test; refresh; submit; inspect explanations, saved
-      answers, results, due reviews and retry behaviour.
-   4. Preview duplicate JSON, cancel safely, test version conflicts and export.
-   5. Use Rules Playground or an emulator to deny student role/premium changes,
-      cross-UID private access and published-content edits. Verify owner and
-      unverified-email restrictions before public release.
-*/
-/* SETUP
-   1. Enable Email/Password and Google in Firebase Authentication.
-   2. Add deepakrajpant.github.io to Authorized domains.
-   3. Create Cloud Firestore; publish the adjacent firestore.rules file.
-   4. Upload index.html, style.css and script.js together to GitHub Pages.
-   5. Sign in with the verified owner email and open Admin > Connection & setup.
-   6. Required index definitions and optional Firebase CLI configuration can be
-      downloaded there. Firebase Console also provides index-creation links in
-      the browser diagnostic for a failed-precondition query.
-   7. Create syllabus entities, publish materials/questions, then test a separate
-      student account. Optional sample import requires a confirmed preview.
-   LIMITATIONS: no service worker/PWA installation; initial SDK startup needs
-   internet; only previously cached content can be read offline. Browser-based
-   test scores and recall progress are practice data, not trusted certification.
-   Client access to solutions is inspectable; use server grading if required.
-*/
-/* Sajilo GK · Four-file release · Firebase is the source of published questions.
- * Domain sections below are intentionally readable. No build step is needed to deploy.
- * Firestore Rules and index downloads: Admin → Connection & setup.
- * Client-only tests are practice assessments; server grading is required for high-stakes integrity.
- */
-const __resources={"rules":"rules_version = '2';\nservice cloud.firestore {\n match /databases/{database}/documents {\n  function signed(){return request.auth != null;}\n  function verified(){return signed() && request.auth.token.email_verified == true;}\n  function primaryAdmin(){return verified() && request.auth.token.email == 'deepakrajpant978@gmail.com';}\n  function role(){return get(/databases/$(database)/documents/adminRoles/$(request.auth.uid)).data;}\n  function staff(){return primaryAdmin() || (verified() && exists(/databases/$(database)/documents/adminRoles/$(request.auth.uid)) && role().enabled == true && active());}\n  function editor(){return primaryAdmin() || (staff() && role().role in ['owner','admin','editor']);}\n  function manager(){return primaryAdmin() || (staff() && role().role in ['owner','admin']);}\n  function support(){return primaryAdmin() || (staff() && role().role in ['owner','admin','support']);}\n  function owner(uid){return signed() && request.auth.uid == uid;}\n  function active(){return primaryAdmin() || (verified() && (!exists(/databases/$(database)/documents/users/$(request.auth.uid)/access/current) || get(/databases/$(database)/documents/users/$(request.auth.uid)/access/current).data.status == 'active'));}\n  function premium(){return active() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/access/current) && get(/databases/$(database)/documents/users/$(request.auth.uid)/access/current).data.premiumUntil is timestamp && get(/databases/$(database)/documents/users/$(request.auth.uid)/access/current).data.premiumUntil > request.time;}\n  function entitled(d){return !('access' in d) || d.access == 'free' || premium() || (exists(/databases/$(database)/documents/appSettings/policy) && get(/databases/$(database)/documents/appSettings/policy).data.premiumEnabled == false);}\n  function published(d){return active() && d.status == 'published' && entitled(d);}\n  function status(d){return d.status in ['draft','published','archived','deleted'];}\n  function text(s,max){return s is string && s.size() <= max;}\n  function nonempty(s,max){return text(s,max) && s.size() > 0;}\n  function editorial(d){return status(d) && d.version is int && d.version > 0 && d.createdAt is timestamp && d.updatedAt == request.time && d.createdBy is string && d.updatedBy == request.auth.uid;}\n  function title(d){return nonempty(d.title,250);}\n  function option(d,i){return d.options.size() <= i || nonempty(d.options[i],12000);}\n  function profile(d){return nonempty(d.displayName,100) && d.dailyQuestionGoal is int && d.dailyQuestionGoal >= 1 && d.dailyQuestionGoal <= 500 && d.dailyMinutesGoal is int && d.dailyMinutesGoal >= 1 && d.dailyMinutesGoal <= 600 && d.preferences is map && d.preferences.keys().hasOnly(['theme','language']) && (!('theme' in d.preferences) || d.preferences.theme in ['light','dark']) && (!('language' in d.preferences) || d.preferences.language in ['en','ne']) && (!('selectedExamIds' in d) || (d.selectedExamIds is list && d.selectedExamIds.size() <= 10)) && (!('subjectSelectionVersion' in d) || d.subjectSelectionVersion == 1);}\n  function question(d){return editorial(d) && nonempty(d.questionText,12000) && d.options is list && d.options.size() >= 2 && d.options.size() <= 6 && option(d,0) && option(d,1) && option(d,2) && option(d,3) && option(d,4) && option(d,5) && d.level in [1,2,3] && d.importance in ['low','medium','high'] && d.verification in ['official','verified_pyq','predicted'] && d.tags is list && d.tags.size() <= 30 && d.access in ['free','premium'] && d.mcq is bool && d.randomKey is number && d.randomKey >= 0 && d.randomKey <= 1 && d.solutionVersion is int && d.examId is string && d.subjectId is string && d.chapterId is string && d.topicId is string && !d.keys().hasAny(['correctOption','explanationHtml','shortAnswer','memoryTrick']);}\n  function validSolution(qid,d){return d.correctOption is int && d.correctOption >= 0 && d.correctOption < getAfter(/databases/$(database)/documents/questions/$(qid)).data.options.size() && text(d.explanationHtml,200000) && text(d.memoryTrick,10000) && text(d.shortAnswer,12000);}\n  function ownWrite(uid){return owner(uid) && active() && request.resource.data.updatedAt == request.time;}\n  function registrationOpen(){return primaryAdmin() || !exists(/databases/$(database)/documents/appSettings/policy) || get(/databases/$(database)/documents/appSettings/policy).data.registrationOpen == true;}\n  match /adminRoles/{uid} {\n   allow get: if owner(uid) || manager(); allow list: if manager();\n   allow create,update: if primaryAdmin() && uid != request.auth.uid && request.resource.data.keys().hasOnly(['role','enabled','assignedBy','assignedAt','createdAt','updatedAt']) && request.resource.data.role in ['admin','editor','support'] && request.resource.data.enabled is bool && request.resource.data.assignedBy == request.auth.uid && request.resource.data.assignedAt == request.time && request.resource.data.updatedAt == request.time;\n   allow delete: if false;\n  }\n  match /users/{uid} {\n   allow read: if owner(uid) || support();\n   allow create: if owner(uid) && registrationOpen() && request.resource.data.keys().hasOnly(['displayName','email','photoURL','targetExamId','dailyQuestionGoal','dailyMinutesGoal','examDate','preferences','createdAt','updatedAt','lastActiveDate','lastActiveAt','selectedExamIds','pendingExamIds','onboardingComplete','onboardingStep','subjectSelectionVersion']) && request.resource.data.email == request.auth.token.email && profile(request.resource.data) && nonempty(request.resource.data.displayName,100) && request.resource.data.dailyQuestionGoal is number && request.resource.data.dailyQuestionGoal >= 1 && request.resource.data.dailyQuestionGoal <= 500 && request.resource.data.updatedAt == request.time;\n   allow update: if owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','photoURL','targetExamId','dailyQuestionGoal','dailyMinutesGoal','examDate','preferences','updatedAt','lastActiveDate','lastActiveAt','selectedExamIds','pendingExamIds','onboardingComplete','onboardingStep','subjectSelectionVersion']) && profile(request.resource.data) && nonempty(request.resource.data.displayName,100) && request.resource.data.dailyQuestionGoal >= 1 && request.resource.data.dailyQuestionGoal <= 500 && request.resource.data.dailyMinutesGoal >= 1 && request.resource.data.dailyMinutesGoal <= 600 && request.resource.data.updatedAt == request.time;\n   match /access/{id} {\n    allow read: if owner(uid) || support();\n    allow create,update: if manager() && id == 'current' && request.resource.data.keys().hasOnly(['status','premiumUntil','reason','changedBy','createdAt','updatedAt']) && request.resource.data.status in ['active','suspended'] && (request.resource.data.premiumUntil == null || request.resource.data.premiumUntil is timestamp) && request.resource.data.changedBy == request.auth.uid && request.resource.data.updatedAt == request.time;\n   }\n   match /{selectionKind}/{id} {\n    function selection(){return selectionKind in ['selectedSubjects','subjects'];}\n    allow read: if selection() && (owner(uid) || support());\n    allow create,update: if selection() && ownWrite(uid) && request.resource.data.keys().hasOnly(['subjectId','examIds','addedAt','updatedAt']) && request.resource.data.subjectId == id && request.resource.data.examIds is list && request.resource.data.examIds.size() <= 10;\n    allow delete: if selection() && owner(uid) && active();\n   }\n   match /savedItems/{id} {\n    allow read: if owner(uid) || support();\n    allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['entityType','entityId','title','subjectId','chapterId','topicId','level','importance','favourite','revision','personalImportant','createdAt','updatedAt']) && request.resource.data.entityType in ['material','question'] && request.resource.data.entityId is string && request.resource.data.level in [1,2,3] && (!('favourite' in request.resource.data) || request.resource.data.favourite is bool) && (!('revision' in request.resource.data) || request.resource.data.revision is bool) && (!('personalImportant' in request.resource.data) || request.resource.data.personalImportant is bool);\n    allow delete: if owner(uid) && active();\n   }\n   match /materialProgress/{id} {\n    allow read: if owner(uid) || support();\n    allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['materialId','materialVersion','subjectId','chapterId','topicId','level','read','readAt','lastOpenedAt','blockId','createdAt','updatedAt']) && request.resource.data.materialId == id && request.resource.data.materialVersion is int && request.resource.data.level in [1,2,3] && (!('read' in request.resource.data) || request.resource.data.read is bool);\n   }\n   match /learningState/{id} {\n    allow read: if owner(uid) || support();\n    allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['materialId','title','topicId','level','lastOpenedAt','createdAt','updatedAt']) && request.resource.data.materialId is string && request.resource.data.level in [1,2,3];\n   }\n   match /questionProgress/{qid} {\n    allow read: if owner(uid) || support();\n    allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['examId','subjectId','chapterId','topicId','level','questionVersion','viewedAt','studiedAt','attempts','correct','wrong','consecutiveCorrectDays','lastCorrectDate','lastAttemptAt','lastReviewedAt','personalDifficulty','learningFlag','masteryState','masteredAt','recentCorrectDates','lastAnswerCorrect','updatedAt','createdAt']) && request.resource.data.attempts is int && request.resource.data.attempts >= 0 && request.resource.data.correct >= 0 && request.resource.data.wrong >= 0 && request.resource.data.correct + request.resource.data.wrong == request.resource.data.attempts && request.resource.data.masteryState in ['not_started','learning','needs_revision','mastered'];\n   }\n   match /bookmarks/{qid} {allow read: if owner(uid) || support(); allow create,update: if ownWrite(uid) && request.resource.data.questionId == qid && request.resource.data.keys().hasOnly(['questionId','topicId','createdAt','updatedAt']); allow delete: if owner(uid) && active();}\n   match /revisionSchedule/{qid} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['entityType','entityId','questionId','easeFactor','intervalDays','repetitions','lapses','lastRating','lastReviewAt','lastReviewDate','nextReviewAt','nextReviewDate','updatedAt','createdAt']) && request.resource.data.questionId == qid && request.resource.data.easeFactor is number && request.resource.data.easeFactor >= 1.3 && request.resource.data.intervalDays >= 1 && request.resource.data.nextReviewAt is timestamp;}\n   match /personalNotes/{nid} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['entityType','entityId','materialId','subjectId','topicId','level','kind','questionId','chapterId','noteVersion','text','selectedText','anchor','createdAt','updatedAt']) && request.resource.data.kind in ['question_note','chapter_highlight','material_note'] && text(request.resource.data.text,10000);allow delete: if owner(uid) && active();}\n   match /chapterProgress/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['title','noteVersion','readingPercent','readAt','lastOpenedAt','createdAt','updatedAt']) && request.resource.data.noteVersion is int;}\n   match /plans/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['dateKey','chapterId','topicId','targetQuestions','targetMinutes','status','createdAt','updatedAt']) && request.resource.data.status in ['planned','completed','skipped'] && request.resource.data.targetQuestions is number && request.resource.data.targetQuestions >= 1 && request.resource.data.targetQuestions <= 500;allow delete: if owner(uid) && active();}\n   match /dailyActivity/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['dateKey','viewed','attempted','correct','reviewed','activeSeconds','goalMet','createdAt','updatedAt']) && request.resource.data.dateKey == id && request.resource.data.attempted is int && request.resource.data.attempted >= 0 && request.resource.data.correct >= 0 && request.resource.data.correct <= request.resource.data.attempted;}\n   match /summary/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['studied','mastered','attempts','correct','bookmarked','activeSeconds','currentStreak','longestStreak','lastActiveDate','freezeWeekKey','freezeUsedDate','createdAt','updatedAt']);}\n   match /scopeStats/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['scopeType','scopeId','examId','studied','mastered','attempts','correct','createdAt','updatedAt']) && request.resource.data.scopeType in ['topic','subject','level','exam'] && request.resource.data.studied >= 0 && request.resource.data.mastered >= 0 && request.resource.data.attempts >= 0 && request.resource.data.correct >= 0 && request.resource.data.correct <= request.resource.data.attempts;}\n   match /studySessions/{sid} {\n    allow read: if owner(uid) || support();\n    allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['mode','scope','startedAt','endedAt','activeSeconds','viewed','attempted','correct','rated','status','createdAt','updatedAt']) && request.resource.data.status in ['active','completed','abandoned'] && request.resource.data.activeSeconds >= 0;\n    match /events/{eid} {allow read: if owner(uid) || support();allow create: if ownWrite(uid) && request.resource.data.keys().hasOnly(['questionId','questionVersion','type','selectedOption','isCorrect','rating','dateKey','occurredAt','createdAt','updatedAt']) && request.resource.data.type in ['view','answer','rating','reveal','flag'] && request.resource.data.occurredAt == request.time;}\n   }\n   match /testAttempts/{aid} {\n    allow read: if owner(uid) || support();\n    allow create: if ownWrite(uid) && request.resource.data.status == 'preparing' && request.resource.data.questionCount is int && request.resource.data.questionCount >= 1 && request.resource.data.questionCount <= 100 && request.resource.data.durationSeconds is number && request.resource.data.durationSeconds >= 60 && request.resource.data.durationSeconds <= 14400 && request.resource.data.integrity == 'client_practice';\n    allow update: if ownWrite(uid) && ((resource.data.status == 'preparing' && request.resource.data.status == 'active' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','startedAt','expiresAt','lastSavedAt','updatedAt'])) || (resource.data.status == 'active' && request.resource.data.status in ['active','submitted','abandoned'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','submittedAt','lastSavedAt','updatedAt'])) || (resource.data.status == 'submitted' && !('result' in resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['result','updatedAt']) && request.resource.data.result is map));\n    match /items/{iid} {\n     allow read: if owner(uid) || support();\n     function attempt(){return get(/databases/$(database)/documents/users/$(uid)/testAttempts/$(aid)).data;}\n     allow create: if ownWrite(uid) && attempt().status == 'preparing' && request.resource.data.order is int && request.resource.data.order >= 0 && request.resource.data.order < 100 && request.resource.data.promptSnapshot is map && request.resource.data.promptSnapshot.options is list && request.resource.data.selectedOption == null;\n     allow update: if ownWrite(uid) && ((attempt().status == 'active' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['selectedOption','markedForReview','timeSpentSeconds','updatedAt']) && (request.resource.data.selectedOption == null || (request.resource.data.selectedOption is int && request.resource.data.selectedOption >= 0 && request.resource.data.selectedOption < resource.data.promptSnapshot.options.size())) && request.resource.data.markedForReview is bool) || (attempt().status == 'submitted' && !('solutionSnapshot' in resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['solutionSnapshot','updatedAt']) && request.resource.data.solutionSnapshot is map && request.resource.data.solutionSnapshot.keys().hasOnly(['correctOption','explanationHtml','shortAnswer','memoryTrick','questionVersion']) && request.resource.data.solutionSnapshot.correctOption is int && request.resource.data.solutionSnapshot.correctOption >= 0 && request.resource.data.solutionSnapshot.correctOption < resource.data.promptSnapshot.options.size() && request.resource.data.solutionSnapshot.questionVersion == resource.data.questionVersion && text(request.resource.data.solutionSnapshot.explanationHtml,200000) && text(request.resource.data.solutionSnapshot.shortAnswer,12000) && text(request.resource.data.solutionSnapshot.memoryTrick,10000)));\n    }\n   }\n   match /notifications/{id} {allow read: if owner(uid) || support();allow create: if manager();allow update: if ownWrite(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','updatedAt']);}\n   match /achievements/{id} {allow read: if owner(uid) || support();allow create,update: if ownWrite(uid) && request.resource.data.keys().hasOnly(['kind','scopeId','earnedAt','criteriaVersion','createdAt','updatedAt']);}\n  }\n  match /questions/{qid} {\n   allow get: if active() && !exists(/databases/$(database)/documents/questions/$(qid));\n   allow read: if editor() || published(resource.data);\n   allow create,update: if editor() && question(request.resource.data) && validSolution(qid,getAfter(/databases/$(database)/documents/questions/$(qid)/solutions/$(request.resource.data.solutionVersion)).data);\n   match /solutions/{version} {allow read: if editor() || published(get(/databases/$(database)/documents/questions/$(qid)).data);allow create: if editor() && validSolution(qid,request.resource.data);}\n   match /revisions/{version} {allow read: if editor();allow create: if editor() && request.resource.data.actorUid == request.auth.uid && request.resource.data.recordedAt == request.time;}\n   match /drafts/{version} {allow read: if editor();allow create,update: if editor() && request.resource.data.updatedAt == request.time;allow delete: if editor();}\n  }\n  match /{kind}/{id} {\n   function contentKind(){return kind in ['materials','exams','subjects','chapters','topics','notes','testSets','mockTests','announcements','currentAffairs','formulaSheets'];}\n   allow get: if contentKind() && active() && !exists(/databases/$(database)/documents/$(kind)/$(id));\n   allow read: if contentKind() && (editor() || published(resource.data));\n   allow create,update: if contentKind() && editor() && editorial(request.resource.data) && title(request.resource.data) && (kind != 'materials' || (request.resource.data.blocks is list && request.resource.data.blocks.size() >= 1 && request.resource.data.blocks.size() <= 60 && request.resource.data.level in [1,2,3] && request.resource.data.importance in ['low','medium','high'] && request.resource.data.topicId is string && request.resource.data.chapterId is string && request.resource.data.subjectId is string)) && (!('contentHtml' in request.resource.data) || text(request.resource.data.contentHtml,300000));\n   match /revisions/{version} {allow read: if contentKind() && editor();allow create: if contentKind() && editor() && request.resource.data.actorUid == request.auth.uid && request.resource.data.recordedAt == request.time;}\n   match /drafts/{version} {allow read: if contentKind() && editor();allow create,update: if contentKind() && editor() && request.resource.data.updatedAt == request.time;allow delete: if contentKind() && editor();}\n  }\n  match /mockTests/{tid}/items/{iid} {allow read: if editor() || published(get(/databases/$(database)/documents/mockTests/$(tid)).data);allow create,update: if editor() && request.resource.data.questionId is string && request.resource.data.order is int;allow delete: if editor();}\n  match /testSets/{tid}/items/{iid} {allow read: if editor() || published(get(/databases/$(database)/documents/testSets/$(tid)).data);allow create,update: if editor() && request.resource.data.questionId is string && request.resource.data.order is int;allow delete: if editor();}\n  match /searchEntries/{id} {allow read: if editor() || published(resource.data);allow create,update: if editor() && request.resource.data.tokens is list && request.resource.data.tokens.size() <= 120 && status(request.resource.data) && request.resource.data.updatedAt == request.time;}\n  match /questionReports/{id} {\n   allow read: if editor() || support() || (signed() && resource.data.reporterUid == request.auth.uid);\n   allow create: if active() && request.resource.data.keys().hasOnly(['entityType','entityId','reporterUid','questionId','questionVersion','reason','details','status','createdAt','updatedAt']) && request.resource.data.reporterUid == request.auth.uid && request.resource.data.status == 'pending' && request.resource.data.reason in ['Wrong Answer','Incorrect Explanation','Duplicate','Typo','Outdated','Missing Image','Other'] && text(request.resource.data.details,3000) && request.resource.data.createdAt == request.time;\n   allow update: if (editor() || support()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','resolutionNotes','resolvedBy','resolvedAt','updatedAt']) && request.resource.data.status in ['pending','resolved'] && request.resource.data.resolvedBy == request.auth.uid;\n  }\n  match /importJobs/{id} {allow read: if editor();allow create,update: if editor() && request.resource.data.actorUid == request.auth.uid && request.resource.data.status in ['validated','committing','completed','partial','cancelled','failed'];match /items/{iid} {allow read: if editor();allow create,update: if editor() && request.resource.data.entityId is string;}}\n  match /adminAuditLogs/{id} {allow read: if staff();allow create: if staff() && request.resource.data.keys().hasOnly(['actorUid','action','entityType','entityId','recordedAt','beforeVersion','afterVersion','jobId']) && request.resource.data.actorUid == request.auth.uid && request.resource.data.recordedAt == request.time;}\n  match /appSettings/{id} {allow read: if id in ['public','policy'] || manager();allow create,update: if manager() && id in ['public','policy'] && request.resource.data.updatedAt == request.time;}\n  match /{path=**}/testAttempts/{id} {allow read: if support();}\n }\n}\n","indexes":{"indexes":[{"collectionGroup":"subjects","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"subjects","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"chapters","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"chapters","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"topics","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"topics","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"sortOrder","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"notes","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"testSets","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"mockTests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"currentAffairs","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"formulaSheets","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"testSets","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"mockTests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"currentAffairs","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"formulaSheets","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"searchEntries","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"tokens","arrayConfig":"CONTAINS"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"masteryState","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"studiedAt","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"masteryState","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"studiedAt","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"masteryState","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"examId","order":"ASCENDING"},{"fieldPath":"studiedAt","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"personalDifficulty","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"learningFlag","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"testAttempts","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"testAttempts","queryScope":"COLLECTION","fields":[{"fieldPath":"testId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"questionReports","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"users","queryScope":"COLLECTION","fields":[{"fieldPath":"email","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"scopeStats","queryScope":"COLLECTION","fields":[{"fieldPath":"scopeType","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"read","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"read","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"read","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"}]},{"collectionGroup":"questionProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materialProgress","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"read","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"importance","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"favourite","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"revision","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"savedItems","queryScope":"COLLECTION","fields":[{"fieldPath":"entityType","order":"ASCENDING"},{"fieldPath":"personalImportant","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"chapterId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"personalNotes","queryScope":"COLLECTION","fields":[{"fieldPath":"level","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"isPyq","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"questions","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"subjectId","order":"ASCENDING"},{"fieldPath":"isPyq","order":"ASCENDING"},{"fieldPath":"randomKey","order":"ASCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"__name__","order":"DESCENDING"}]},{"collectionGroup":"materials","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"access","order":"ASCENDING"},{"fieldPath":"topicId","order":"ASCENDING"},{"fieldPath":"__name__","order":"DESCENDING"}]}],"fieldOverrides":[{"collectionGroup":"notes","fieldPath":"contentHtml","indexes":[]},{"collectionGroup":"currentAffairs","fieldPath":"contentHtml","indexes":[]},{"collectionGroup":"formulaSheets","fieldPath":"contentHtml","indexes":[]},{"collectionGroup":"announcements","fieldPath":"bodyHtml","indexes":[]},{"collectionGroup":"solutions","fieldPath":"explanationHtml","indexes":[]},{"collectionGroup":"revisions","fieldPath":"snapshot","indexes":[]},{"collectionGroup":"items","fieldPath":"promptSnapshot","indexes":[]},{"collectionGroup":"testAttempts","fieldPath":"result","indexes":[]},{"collectionGroup":"testAttempts","fieldPath":"updatedAt","indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"order":"DESCENDING","queryScope":"COLLECTION"},{"order":"ASCENDING","queryScope":"COLLECTION_GROUP"},{"order":"DESCENDING","queryScope":"COLLECTION_GROUP"}]},{"collectionGroup":"materials","fieldPath":"blocks","indexes":[]}]},"sample":{"schemaVersion":"1.0","records":[{"collection":"exams","id":"ntc","data":{"title":"Nepal Telecom","status":"published","sortOrder":0}},{"collection":"exams","id":"nea","data":{"title":"Nepal Electricity Authority","status":"published","sortOrder":1}},{"collection":"exams","id":"general","data":{"title":"General Loksewa","status":"published","sortOrder":2}},{"collection":"subjects","id":"science","data":{"title":"Science & Technology","description":"Shared science fundamentals for selected examinations.","examId":"ntc","examIds":["ntc","nea","general"],"status":"published","sortOrder":0}},{"collection":"chapters","id":"science-foundations","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","title":"Science Foundations","description":"Understand the concept, then practice your recall.","status":"published","sortOrder":0}},{"collection":"notes","id":"science-foundations","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","title":"Science Foundations · आधारभूत विज्ञान","contentHtml":"<h2>How to study this chapter</h2><p>Read each definition, recall it without looking, and then solve a question. These are author-created practice notes, not official past questions.</p><h2>SI units</h2><table><tr><th>Quantity</th><th>Unit</th></tr><tr><td>Current</td><td>ampere (A)</td></tr><tr><td>Resistance</td><td>ohm (Ω)</td></tr><tr><td>Force</td><td>newton (N)</td></tr><tr><td>Energy</td><td>joule (J)</td></tr><tr><td>Power</td><td>watt (W)</td></tr></table><h2>Electric circuits</h2><p>Ohm’s law: V = IR. For a fixed resistance, P = V²/R. State the assumptions before applying a formula.</p><h2>Waves</h2><p>Period T = 1/f. Convert milliseconds and seconds before calculating.</p><h2>General science</h2><p>Water is H₂O. The Moon is Earth’s natural satellite. Water’s boiling temperature depends on pressure.</p>","keyFacts":["V = IR","P = V²/R","T = 1/f"],"commonMistakes":["Confusing energy (joule) with power (watt).","Using 100°C as a boiling point without a pressure condition."],"examTips":["Write units in every numerical answer.","Reattempt incorrect questions on a later day."],"access":"free","status":"published"}},{"collection":"topics","id":"electricity","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","title":"विद्युत् आधारभूत","status":"published","sortOrder":0}},{"collection":"questions","id":"sample-electricity-1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-1","questionText":"विद्युत् प्रवाहको SI एकाइ कुन हो?","options":["एम्पियर","भोल्ट","ओहम","वाट"],"correctOption":0,"level":1,"importance":"high","explanation":"Electric current is measured in amperes.","memoryTrick":"Current → ampere","shortAnswer":"एम्पियर","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"Electric current is measured in amperes.","access":"free"}},{"collection":"questions","id":"sample-electricity-2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-2","questionText":"प्रतिरोधको SI एकाइ कुन हो?","options":["वाट","ओहम","जुल","कुलम्ब"],"correctOption":1,"level":1,"importance":"high","explanation":"Electrical resistance is measured in ohms.","memoryTrick":"Resistance → ohm","shortAnswer":"ओहम","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"Electrical resistance is measured in ohms.","access":"free"}},{"collection":"questions","id":"sample-electricity-3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-3","questionText":"12 V स्रोतमा 6 Ω प्रतिरोध जोड्दा प्रवाह कति हुन्छ?","options":["1 A","2 A","6 A","72 A"],"correctOption":1,"level":2,"importance":"high","explanation":"By Ohm’s law, I = V/R = 12/6 = 2 A.","memoryTrick":"V = IR","shortAnswer":"2 A","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"By Ohm’s law, I = V/R = 12/6 = 2 A.","access":"free"}},{"collection":"questions","id":"sample-electricity-4","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-4","questionText":"दुईवटा 10 Ω प्रतिरोध समानान्तर जोड्दा तुल्य प्रतिरोध कति हुन्छ?","options":["20 Ω","10 Ω","5 Ω","100 Ω"],"correctOption":2,"level":2,"importance":"high","explanation":"For equal resistors in parallel, equivalent resistance is R/n = 5 Ω.","memoryTrick":"Equal parallel resistors → divide by count","shortAnswer":"5 Ω","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"For equal resistors in parallel, equivalent resistance is R/n = 5 Ω.","access":"free"}},{"collection":"questions","id":"sample-electricity-5","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-5","questionText":"आदर्श capacitor को DC steady state व्यवहार के हुन्छ?","options":["Short circuit","Open circuit","Negative resistance","Voltage source"],"correctOption":1,"level":3,"importance":"high","explanation":"After the charging transient, an ideal capacitor passes no steady DC current.","memoryTrick":"Capacitor blocks steady DC","shortAnswer":"Open circuit","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"After the charging transient, an ideal capacitor passes no steady DC current.","access":"free"}},{"collection":"questions","id":"sample-electricity-6","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-6","questionText":"स्थिर प्रतिरोधमा भोल्टेज दोब्बर हुँदा शक्ति कति गुणा हुन्छ?","options":["2","4","8","1/2"],"correctOption":1,"level":3,"importance":"high","explanation":"P = V²/R. Doubling V multiplies power by four.","memoryTrick":"Square the voltage ratio","shortAnswer":"4","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["electricity","sample"],"status":"published","explanationHtml":"P = V²/R. Doubling V multiplies power by four.","access":"free"}},{"collection":"testSets","id":"sample-electricity-basic","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-basic","title":"electricity · basic","kind":"basic","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[1],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-medium","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-medium","title":"electricity · medium","kind":"medium","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[2],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-hard","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-hard","title":"electricity · hard","kind":"hard","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-important","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-important","title":"electricity · important","kind":"important","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"high"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-mixed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-mixed","title":"electricity · mixed","kind":"mixed","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-speed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-speed","title":"electricity · speed","kind":"speed","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[1,2,3],"questionCount":20,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":600,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-electricity-full","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","id":"sample-electricity-full","title":"electricity · full","kind":"full","status":"published","selectionRules":{"topicIds":["electricity"],"levels":[1,2,3],"questionCount":50,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"materials","id":"sample-electricity-l1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","title":"विद्युत् आधारभूत · Basic foundations","description":"Author-created learning material linked to the practice questions at this level.","level":1,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Understand the fundamentals"},{"id":"explanation","type":"text","html":"<p>Electric current is measured in amperes.</p><p>Electrical resistance is measured in ohms.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Current → ampere","Resistance → ohm"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"एम्पियर · ओहम"}]}},{"collection":"materials","id":"sample-electricity-l2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","title":"विद्युत् आधारभूत · Connections and comparison","description":"Author-created learning material linked to the practice questions at this level.","level":2,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Connect the ideas"},{"id":"explanation","type":"text","html":"<p>By Ohm’s law, I = V/R = 12/6 = 2 A.</p><p>For equal resistors in parallel, equivalent resistance is R/n = 5 Ω.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["V = IR","Equal parallel resistors → divide by count"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"2 A · 5 Ω"}]}},{"collection":"materials","id":"sample-electricity-l3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"electricity","title":"विद्युत् आधारभूत · Advanced recall","description":"Author-created learning material linked to the practice questions at this level.","level":3,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Recall the details"},{"id":"explanation","type":"text","html":"<p>After the charging transient, an ideal capacitor passes no steady DC current.</p><p>P = V²/R. Doubling V multiplies power by four.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Capacitor blocks steady DC","Square the voltage ratio"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"Open circuit · 4"}]}},{"collection":"topics","id":"physics","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","title":"Physics and Units","status":"published","sortOrder":1}},{"collection":"questions","id":"sample-physics-1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-1","questionText":"बलको SI एकाइ कुन हो?","options":["न्युटन","वाट","पास्कल","जुल"],"correctOption":0,"level":1,"importance":"high","explanation":"Force is measured in newtons.","memoryTrick":"Force → newton","shortAnswer":"न्युटन","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"Force is measured in newtons.","access":"free"}},{"collection":"questions","id":"sample-physics-2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-2","questionText":"ऊर्जाको SI एकाइ कुन हो?","options":["वाट","जुल","एम्पियर","हर्ट्ज"],"correctOption":1,"level":1,"importance":"high","explanation":"Energy is measured in joules. Power is measured in watts.","memoryTrick":"Energy → joule; power → watt","shortAnswer":"जुल","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"Energy is measured in joules. Power is measured in watts.","access":"free"}},{"collection":"questions","id":"sample-physics-3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-3","questionText":"आवृत्ति 50 Hz भएको तरंगको आवर्तकाल कति हुन्छ?","options":["20 ms","50 ms","2 s","5 s"],"correctOption":0,"level":2,"importance":"high","explanation":"T = 1/f = 1/50 s = 0.02 s = 20 ms.","memoryTrick":"T = 1/f","shortAnswer":"20 ms","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"T = 1/f = 1/50 s = 0.02 s = 20 ms.","access":"free"}},{"collection":"questions","id":"sample-physics-4","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-4","questionText":"10 N बलले वस्तुलाई बलकै दिशामा 2 m सार्दा कार्य कति हुन्छ?","options":["5 J","12 J","20 J","100 J"],"correctOption":2,"level":2,"importance":"medium","explanation":"W = Fd cos θ. Here θ = 0, so W = 10 × 2 = 20 J.","memoryTrick":"Same direction → multiply","shortAnswer":"20 J","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"W = Fd cos θ. Here θ = 0, so W = 10 × 2 = 20 J.","access":"free"}},{"collection":"questions","id":"sample-physics-5","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-5","questionText":"निर्वातमा electromagnetic wave को गति लगभग कति हुन्छ?","options":["3 × 10⁶ m/s","3 × 10⁸ m/s","3 × 10⁴ m/s","3 × 10² m/s"],"correctOption":1,"level":3,"importance":"high","explanation":"Electromagnetic waves travel at approximately 3 × 10⁸ m/s in vacuum.","memoryTrick":"c ≈ 3 × 10⁸ m/s","shortAnswer":"3 × 10⁸ m/s","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"Electromagnetic waves travel at approximately 3 × 10⁸ m/s in vacuum.","access":"free"}},{"collection":"questions","id":"sample-physics-6","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-6","questionText":"कुन राशिको dimensions शक्ति बराबर हुन्छ?","options":["ऊर्जा × समय","बल × वेग","द्रव्यमान × वेग","बल × दूरी"],"correctOption":1,"level":3,"importance":"medium","explanation":"Force × velocity has units N × m/s = J/s = watt.","memoryTrick":"Power = force × velocity","shortAnswer":"बल × वेग","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["physics","sample"],"status":"published","explanationHtml":"Force × velocity has units N × m/s = J/s = watt.","access":"free"}},{"collection":"testSets","id":"sample-physics-basic","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-basic","title":"physics · basic","kind":"basic","status":"published","selectionRules":{"topicIds":["physics"],"levels":[1],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-medium","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-medium","title":"physics · medium","kind":"medium","status":"published","selectionRules":{"topicIds":["physics"],"levels":[2],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-hard","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-hard","title":"physics · hard","kind":"hard","status":"published","selectionRules":{"topicIds":["physics"],"levels":[3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-important","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-important","title":"physics · important","kind":"important","status":"published","selectionRules":{"topicIds":["physics"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"high"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-mixed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-mixed","title":"physics · mixed","kind":"mixed","status":"published","selectionRules":{"topicIds":["physics"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-speed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-speed","title":"physics · speed","kind":"speed","status":"published","selectionRules":{"topicIds":["physics"],"levels":[1,2,3],"questionCount":20,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":600,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-physics-full","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","id":"sample-physics-full","title":"physics · full","kind":"full","status":"published","selectionRules":{"topicIds":["physics"],"levels":[1,2,3],"questionCount":50,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"materials","id":"sample-physics-l1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","title":"Physics and Units · Basic foundations","description":"Author-created learning material linked to the practice questions at this level.","level":1,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Understand the fundamentals"},{"id":"explanation","type":"text","html":"<p>Force is measured in newtons.</p><p>Energy is measured in joules. Power is measured in watts.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Force → newton","Energy → joule; power → watt"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"न्युटन · जुल"}]}},{"collection":"materials","id":"sample-physics-l2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","title":"Physics and Units · Connections and comparison","description":"Author-created learning material linked to the practice questions at this level.","level":2,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Connect the ideas"},{"id":"explanation","type":"text","html":"<p>T = 1/f = 1/50 s = 0.02 s = 20 ms.</p><p>W = Fd cos θ. Here θ = 0, so W = 10 × 2 = 20 J.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["T = 1/f","Same direction → multiply"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"20 ms · 20 J"}]}},{"collection":"materials","id":"sample-physics-l3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"physics","title":"Physics and Units · Advanced recall","description":"Author-created learning material linked to the practice questions at this level.","level":3,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Recall the details"},{"id":"explanation","type":"text","html":"<p>Electromagnetic waves travel at approximately 3 × 10⁸ m/s in vacuum.</p><p>Force × velocity has units N × m/s = J/s = watt.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["c ≈ 3 × 10⁸ m/s","Power = force × velocity"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"3 × 10⁸ m/s · बल × वेग"}]}},{"collection":"topics","id":"general-science","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","title":"सामान्य विज्ञान","status":"published","sortOrder":2}},{"collection":"questions","id":"sample-general-science-1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-1","questionText":"पृथ्वीको प्राकृतिक उपग्रह कुन हो?","options":["चन्द्रमा","मङ्गल","शुक्र","बुध"],"correctOption":0,"level":1,"importance":"high","explanation":"The Moon is Earth’s natural satellite.","memoryTrick":"Earth → Moon","shortAnswer":"चन्द्रमा","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"The Moon is Earth’s natural satellite.","access":"free"}},{"collection":"questions","id":"sample-general-science-2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-2","questionText":"शुद्ध पानीको रासायनिक सूत्र कुन हो?","options":["CO₂","H₂O","O₂","NaCl"],"correctOption":1,"level":1,"importance":"high","explanation":"A water molecule has two hydrogen atoms and one oxygen atom.","memoryTrick":"H₂O → 2 H + 1 O","shortAnswer":"H₂O","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"A water molecule has two hydrogen atoms and one oxygen atom.","access":"free"}},{"collection":"questions","id":"sample-general-science-3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-3","questionText":"मानक वायुमण्डलीय चापमा शुद्ध पानीको उम्लने तापक्रम लगभग कति हुन्छ?","options":["0°C","50°C","100°C","200°C"],"correctOption":2,"level":2,"importance":"high","explanation":"At standard atmospheric pressure, pure water boils at approximately 100°C. Boiling temperature changes with pressure.","memoryTrick":"Specify pressure before boiling point","shortAnswer":"100°C","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"At standard atmospheric pressure, pure water boils at approximately 100°C. Boiling temperature changes with pressure.","access":"free"}},{"collection":"questions","id":"sample-general-science-4","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-4","questionText":"प्रकाश संश्लेषणमा सामान्यतया कुन ग्यास ग्रहण हुन्छ?","options":["अक्सिजन","कार्बन डाइअक्साइड","हिलियम","नियन"],"correctOption":1,"level":2,"importance":"medium","explanation":"Photosynthesis uses carbon dioxide and water to form carbohydrates, releasing oxygen.","memoryTrick":"CO₂ enters; O₂ leaves","shortAnswer":"कार्बन डाइअक्साइड","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"Photosynthesis uses carbon dioxide and water to form carbohydrates, releasing oxygen.","access":"free"}},{"collection":"questions","id":"sample-general-science-5","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-5","questionText":"pH 3 बाट pH 5 हुँदा hydrogen ion concentration कति हुन्छ?","options":["100 गुणा बढ्छ","100 गुणा घट्छ","2 गुणा बढ्छ","अपरिवर्तित"],"correctOption":1,"level":3,"importance":"medium","explanation":"Each pH unit is a tenfold change. An increase of 2 means a 100-fold reduction in hydrogen ion activity in the usual introductory approximation.","memoryTrick":"Higher pH → lower H⁺","shortAnswer":"100 गुणा घट्छ","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"Each pH unit is a tenfold change. An increase of 2 means a 100-fold reduction in hydrogen ion activity in the usual introductory approximation.","access":"free"}},{"collection":"questions","id":"sample-general-science-6","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-6","questionText":"समस्थानिकमा कुन संख्या समान हुन्छ?","options":["न्युट्रोन संख्या","परमाणु क्रमाङ्क","द्रव्यमान संख्या","न्युक्लिओन संख्या"],"correctOption":1,"level":3,"importance":"high","explanation":"Isotopes are atoms of the same element with equal proton number but different neutron numbers.","memoryTrick":"Same element → same protons","shortAnswer":"परमाणु क्रमाङ्क","source":{"title":"Author-created educational practice. Verify against your prescribed textbook; not an official PYQ."},"verification":"predicted","mcq":true,"tags":["general-science","sample"],"status":"published","explanationHtml":"Isotopes are atoms of the same element with equal proton number but different neutron numbers.","access":"free"}},{"collection":"testSets","id":"sample-general-science-basic","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-basic","title":"general-science · basic","kind":"basic","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[1],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-medium","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-medium","title":"general-science · medium","kind":"medium","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[2],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-hard","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-hard","title":"general-science · hard","kind":"hard","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-important","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-important","title":"general-science · important","kind":"important","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"high"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-mixed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-mixed","title":"general-science · mixed","kind":"mixed","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[1,2,3],"questionCount":6,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-speed","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-speed","title":"general-science · speed","kind":"speed","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[1,2,3],"questionCount":20,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":600,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"testSets","id":"sample-general-science-full","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","id":"sample-general-science-full","title":"general-science · full","kind":"full","status":"published","selectionRules":{"topicIds":["general-science"],"levels":[1,2,3],"questionCount":50,"levelMix":{"l1":40,"l2":40,"l3":20},"importanceMin":"low"},"durationSeconds":1200,"scoring":{"marksPerQuestion":1,"negativeMarks":0,"passPercentage":60},"unlockPolicy":{"enabled":false},"access":"free"}},{"collection":"materials","id":"sample-general-science-l1","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","title":"सामान्य विज्ञान · Basic foundations","description":"Author-created learning material linked to the practice questions at this level.","level":1,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Understand the fundamentals"},{"id":"explanation","type":"text","html":"<p>The Moon is Earth’s natural satellite.</p><p>A water molecule has two hydrogen atoms and one oxygen atom.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Earth → Moon","H₂O → 2 H + 1 O"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"चन्द्रमा · H₂O"}]}},{"collection":"materials","id":"sample-general-science-l2","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","title":"सामान्य विज्ञान · Connections and comparison","description":"Author-created learning material linked to the practice questions at this level.","level":2,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Connect the ideas"},{"id":"explanation","type":"text","html":"<p>At standard atmospheric pressure, pure water boils at approximately 100°C. Boiling temperature changes with pressure.</p><p>Photosynthesis uses carbon dioxide and water to form carbohydrates, releasing oxygen.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Specify pressure before boiling point","CO₂ enters; O₂ leaves"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"100°C · कार्बन डाइअक्साइड"}]}},{"collection":"materials","id":"sample-general-science-l3","data":{"examId":"ntc","subjectId":"science","chapterId":"science-foundations","topicId":"general-science","title":"सामान्य विज्ञान · Advanced recall","description":"Author-created learning material linked to the practice questions at this level.","level":3,"importance":"high","access":"free","status":"published","source":{"title":"Author-created educational practice; verify with your prescribed textbook. Not official PYQ."},"blocks":[{"id":"intro","type":"heading","text":"Recall the details"},{"id":"explanation","type":"text","html":"<p>Each pH unit is a tenfold change. An increase of 2 means a 100-fold reduction in hydrogen ion activity in the usual introductory approximation.</p><p>Isotopes are atoms of the same element with equal proton number but different neutron numbers.</p>"},{"id":"units","type":"table","rows":[["Quantity","Unit"],["Electric current","ampere (A)"],["Force","newton (N)"],["Energy","joule (J)"]]},{"id":"memory","type":"facts","items":["Higher pH → lower H⁺","Same element → same protons"]},{"id":"recall","type":"tips","text":"Close the material and recall the key facts before attempting the linked questions."},{"id":"summary","type":"summary","text":"100 गुणा घट्छ · परमाणु क्रमाङ्क"}]}}]}};
-
-const __instances=new Map(),__externals=new Map();
-function __external(url){if(!__externals.has(url))__externals.set(url,import(url));return __externals.get(url);}
-function __load(id){if(!__factories[id])return Promise.reject(new Error('Unknown application section: '+id));if(!__instances.has(id)){const pending=__factories[id]().catch(error=>{__instances.delete(id);throw error;});__instances.set(id,pending);}return __instances.get(id);}
-const __factories={
-"admin/content.js":async()=>{
-const {page,get,save,audit,serverTimestamp}=await __load("services/db.js");
-const {writeContent,solution,setStatus}=await __load("services/content.js");
-const {esc,uid,fail,validateQuestion}=await __load("utils.js");
-const {$,$$,action,empty,toast,select,field,modal,pager,confirmDialog,skeleton}=await __load("ui/components.js");
-const {mountEditor,sanitize}=await __load("ui/editor.js");
-const {canEdit}=await __load("auth.js");
-const {adminNav}=await __load("admin/dashboard.js");
-const kinds=['questions','notes','testSets','mockTests','exams','subjects','chapters','topics','announcements','currentAffairs','formulaSheets'];
-async function render(root,{params,context:c}){if(!canEdit())fail('Content editing is restricted to editors and administrators.');let kind=params.get('kind')||'questions';if(!kinds.includes(kind))kind='questions';let cursor=null,previous=[],selected=new Set(),items=[];const initialStatus=params.get('status')||'';async function draw(){const filters=[];const status=$('[name=status]',root)?.value??initialStatus;if(status)filters.push(['status','==',status]);if(params.get('level')&&kind==='questions')filters.push(['level','==',Number(params.get('level'))]);if(params.get('importance')&&kind==='questions')filters.push(['importance','==',params.get('importance')]);const p=await page(kind,{filters,cursor,sort:filters.length?'__name__':'updatedAt',direction:filters.length?'asc':'desc'});items=p.items;selected.clear();if(!root.isConnected)return;root.innerHTML=`${adminNav('content')}<div class="row between"><h1>Content library</h1><button id="new" class="primary">+ Create ${esc(kind)}</button></div><form id="content-filters" class="filters">${select('Content type','kind',kinds,kind)}${select('Status','status',[['','All'],['published','Published'],['draft','Draft'],['archived','Archived'],['deleted','Deleted']],status)}<button>Apply</button></form><div class="bulkbar row"><label class="inline-check"><input type="checkbox" id="select-all"> Select page</label><span id="selected-count">0 selected</span>${select('Bulk action','bulk',[['published','Publish'],['draft','Draft'],['archived','Archive'],['deleted','Soft delete'],['level','Change level'],['importance','Change importance'],['topicId','Change topic']])}<button id="apply-bulk">Apply</button><a class="btn" href="#/admin/import?export=${esc(kind)}">Export</a></div><div class="tablewrap card section"><table><thead><tr><th>Select</th><th>Title / Question</th><th>Status</th><th>Version</th><th>Actions</th></tr></thead><tbody>${items.map(x=>`<tr><td><input type="checkbox" data-select="${esc(x.id)}" aria-label="Select ${esc(x.id)}"></td><td><b>${esc(x.questionText||x.title)}</b><br><small>${esc(x.id)} ${x.level?'· L'+x.level+' · '+esc(x.importance):''}</small></td><td>${esc(x.status)}</td><td>${x.version||1}</td><td><div class="admin-row-actions"><button data-edit="${esc(x.id)}">Edit</button><button data-preview="${esc(x.id)}">Preview</button><button data-history="${esc(x.id)}">History</button><button data-duplicate="${esc(x.id)}">Duplicate</button><button data-delete="${esc(x.id)}">${x.status==='deleted'?'Restore':'Delete'}</button></div></td></tr>`).join('')}</tbody></table>${!items.length?empty('No matching content.'):''}</div>`;$('#content-filters').onsubmit=action(async e=>{e.preventDefault();const f=new FormData(e.currentTarget);if(f.get('kind')!==kind){c.go('/admin/content?kind='+f.get('kind'));return;}cursor=null;previous=[];await draw();});$('#new').onclick=()=>edit(kind,null,c,draw);$$('[data-edit]').forEach(b=>b.onclick=action(()=>edit(kind,items.find(x=>x.id===b.dataset.edit),c,draw)));$$('[data-preview]').forEach(b=>b.onclick=action(()=>preview(kind,items.find(x=>x.id===b.dataset.preview))));$$('[data-history]').forEach(b=>b.onclick=action(()=>history(kind,items.find(x=>x.id===b.dataset.history),c,draw)));$$('[data-duplicate]').forEach(b=>b.onclick=action(async()=>{const original=items.find(x=>x.id===b.dataset.duplicate);const copy={...original,id:undefined,status:'draft'};if(kind==='questions')Object.assign(copy,await solution(original));await edit(kind,copy,c,draw);}));$$('[data-delete]').forEach(b=>b.onclick=action(async()=>{const item=items.find(x=>x.id===b.dataset.delete);if(!await confirmDialog(item.status==='deleted'?'Restore this record?':'Soft delete this record? History is retained.'))return;await setStatus(kind,item,item.status==='deleted'?'draft':'deleted',c.user.uid);await draw();}));function updateSelected(){$('#selected-count').textContent=selected.size+' selected';}$$('[data-select]').forEach(b=>b.onchange=()=>{b.checked?selected.add(b.dataset.select):selected.delete(b.dataset.select);updateSelected();});$('#select-all').onchange=e=>{$$('[data-select]').forEach(b=>{b.checked=e.target.checked;b.checked?selected.add(b.dataset.select):selected.delete(b.dataset.select);});updateSelected();};$('#apply-bulk').onclick=action(async()=>{if(!selected.size)fail('Select records first.');const operation=$('[name=bulk]').value;let value=null;if(['level','importance','topicId'].includes(operation)){value=prompt('New '+operation);if(value===null)return;if(operation==='level')value=Number(value);}if(!await confirmDialog(`Apply ${operation} to ${selected.size} selected records?`))return;let done=0;for(const item of items.filter(x=>selected.has(x.id))){if(['level','importance','topicId'].includes(operation)){const data={...item,[operation]:value};if(kind==='questions')Object.assign(data,await solution(item));await writeContent(kind,item.id,data,c.user.uid,{expectedVersion:item.version});}else await setStatus(kind,item,operation,c.user.uid);done++;}toast(done+' records updated.');await draw();});pager(root,{hasNext:p.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=previous.pop();return draw();}});}await draw();}
-async function edit(kind,item,c,refresh){const question=kind==='questions',rich=['notes','announcements','currentAffairs','formulaSheets'].includes(kind),test=['testSets','mockTests'].includes(kind);const data={status:'draft',level:1,importance:'high',access:'free',verification:'predicted',options:['','','',''],...item};if(question&&item?.id)Object.assign(data,await solution(item));if(test&&item?.id&&item.selectionMode==='specific'){let cursor=null;data.questionIds=[];do{const p=await page(`${kind}/${item.id}/items`,{sort:'order',direction:'asc',cursor});data.questionIds.push(...p.items.map(x=>x.questionId));cursor=p.hasNext?p.cursor:null;}while(cursor);}if(item?.id){const staged=await get(`${kind}/${item.id}/drafts/current`,{fresh:true});if(staged?.snapshot)Object.assign(data,staged.snapshot);}const hierarchy=kind==='exams'?[]:kind==='subjects'?['examId']:kind==='chapters'?['examId','subjectId']:kind==='topics'||kind==='notes'?['examId','subjectId','chapterId']:question?['examId','subjectId','chapterId','topicId']:test?['examId']:[];const d=modal((item?.id?'Edit ':'Create ')+kind,`<form id="editor-form" class="form">${field('ID','id',item?.id||'','text',item?.id?'readonly':'placeholder="Auto-generated if empty" pattern="[A-Za-z0-9_-]+"')}${question?`<label>Question<textarea name="questionText" maxlength="12000" required>${esc(data.questionText||'')}</textarea></label><label>Options · one per line (2–6)<textarea name="options" required>${esc(data.options.join('\n'))}</textarea></label><div class="filters">${field('Correct option number (1–6)','correctOption',Number(data.correctOption??0)+1,'number','min="1" max="6" required')}${select('Difficulty','level',[[1,'L1 Basic'],[2,'L2 Medium'],[3,'L3 Hard']],data.level)}${select('Importance','importance',['low','medium','high'],data.importance)}${select('Verification','verification',['official','verified_pyq','predicted'],data.verification)}</div>${field('Short answer','shortAnswer',data.shortAnswer||'')}${field('Memory trick','memoryTrick',data.memoryTrick||'')}<label>Explanation</label><div id="explanation-editor"></div>${field('Image URL (HTTPS)','imageUrl',data.imageUrl||'','url')}${field('Image description','imageAlt',data.imageAlt||'')}${field('Source title','sourceTitle',data.source?.title||'')}${field('Source URL','sourceUrl',data.source?.url||'','url')}<label class="inline-check"><input name="isPyq" type="checkbox" ${data.isPyq?'checked':''}>Previous year question</label>`:field('Title','title',data.title||'','text','required maxlength="250"')}${hierarchy.length?`<div class="filters">${hierarchy.map(k=>field(k,k,data[k]||'','text','required')).join('')}</div><p class="muted">Use IDs from the exams, subjects, chapters and topics tabs.</p>`:''}${kind==='notes'?'<p class="muted">The note ID must equal its chapter ID. One published notes document per chapter.</p>':''}${rich?'<label>Content</label><div id="rich-editor"></div>':''}${kind==='notes'?['keyFacts','commonMistakes','examTips'].map(k=>`<label>${k} · one per line<textarea name="${k}">${esc((data[k]||[]).join('\n'))}</textarea></label>`).join(''):''}${test?`<label>Description<textarea name="description">${esc(data.description||'')}</textarea></label><label>Selection rules JSON<textarea name="selectionRules" required>${esc(JSON.stringify(data.selectionRules||{questionCount:20,levels:[1,2,3],levelMix:{l1:40,l2:40,l3:20},subjectIds:[],topicIds:[],importanceMin:'low'},null,2))}</textarea></label><label>Scoring JSON<textarea name="scoring" required>${esc(JSON.stringify(data.scoring||{marksPerQuestion:1,negativeMarks:0,passPercentage:60},null,2))}</textarea></label>${field('Duration (seconds)','durationSeconds',data.durationSeconds||1200,'number','min="60" max="14400" required')}${select('Set type','kind',['basic','medium','hard','important','mixed','speed','full'],data.kind||'mixed')}<label>Unlock policy JSON<textarea name="unlockPolicy">${esc(JSON.stringify(data.unlockPolicy||{enabled:false},null,2))}</textarea></label><label>Specific question IDs · one per line (optional)<textarea name="questionIds">${esc((data.questionIds||[]).join('\n'))}</textarea></label>`:''}${!question&&!rich&&!test?`${field('Sort order','sortOrder',data.sortOrder||0,'number')}<label>Description<textarea name="description">${esc(data.description||'')}</textarea></label>`:''}${['currentAffairs'].includes(kind)?`${field('Date (Nepal)','dateKey',data.dateKey||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kathmandu'}),'date')}${select('Period','period',['daily','weekly'],data.period||'daily')}`:''}${field('Tags · comma separated','tags',(data.tags||[]).join(', '))}<div class="filters">${select('Access','access',['free','premium'],data.access)}${select('Status','status',['draft','published','archived'],data.status==='deleted'?'draft':data.status)}</div><div id="edit-errors" class="danger" role="alert"></div><div class="row"><button class="primary" id="save-content">Save content</button><button type="button" id="preview-content">Preview</button></div></form>`);const richEditor=rich?mountEditor($('#rich-editor',d),data.contentHtml||data.bodyHtml||''):null;const expEditor=question?mountEditor($('#explanation-editor',d),data.explanationHtml||''):null;
- function collect(){const f=Object.fromEntries(new FormData($('#editor-form',d)));const x={...data,...f};delete x.id;x.tags=f.tags.split(',').map(x=>x.trim()).filter(Boolean);for(const k of ['correctOption','level','sortOrder','durationSeconds'])if(k in f)x[k]=Number(f[k])-(k==='correctOption'?1:0);if(question){x.options=f.options.split('\n').map(x=>x.trim()).filter(Boolean);x.source={title:f.sourceTitle,url:f.sourceUrl};x.explanationHtml=expEditor.value();x.isPyq=!!f.isPyq;x.mcq=true;delete x.sourceTitle;delete x.sourceUrl;}if(rich){x[kind==='announcements'?'bodyHtml':'contentHtml']=richEditor.value();x.wordCount=richEditor.element.textContent.split(/\s+/).filter(Boolean).length;}for(const k of ['keyFacts','commonMistakes','examTips'])if(k in f)x[k]=f[k].split('\n').filter(Boolean);if(test){for(const k of ['selectionRules','scoring','unlockPolicy'])x[k]=JSON.parse(f[k]||'{}');if(!Number.isInteger(x.selectionRules.questionCount)||x.selectionRules.questionCount<1||x.selectionRules.questionCount>100)fail('Question count must be between 1 and 100.');if(!Number.isFinite(x.scoring.marksPerQuestion)||x.scoring.marksPerQuestion<=0||x.scoring.negativeMarks<0||x.scoring.passPercentage<0||x.scoring.passPercentage>100)fail('Invalid scoring configuration.');x.questionIds=f.questionIds.split('\n').map(s=>s.trim()).filter(Boolean);x.selectionMode=x.questionIds.length?'specific':'rules';}return {x,id:f.id|| (kind==='notes'?f.chapterId:uid())};}
- $('#preview-content',d).onclick=action(async()=>{const {x}=collect();await preview(kind,x);});$('#editor-form',d).onsubmit=action(async e=>{e.preventDefault();try{const {x,id}=collect();const specificIds=x.questionIds||[];if(kind==='notes'&&id!==x.chapterId)fail('Notes ID must equal its chapter ID.');for(const k of hierarchy){const collection={examId:'exams',subjectId:'subjects',chapterId:'chapters',topicId:'topics'}[k];if(!await get(collection+'/'+x[k],{fresh:true}))fail(k+' does not exist.');}if(question){const errors=validateQuestion(x);if(x.status==='published'&&!x.source.title)errors.push('Published questions need a source title');if(errors.length)fail(errors.join('. '));const topic=await get('topics/'+x.topicId);if(topic.chapterId!==x.chapterId||topic.subjectId!==x.subjectId||topic.examId!==x.examId)fail('Question hierarchy does not match the topic.');}if(rich&&x.status==='published'&&!richEditor.element.textContent.trim())fail('Published content must not be empty.');if(test&&x.questionIds?.length){for(const qid of x.questionIds)if(!await get('questions/'+qid))fail('Question not found: '+qid);}
- await writeContent(kind,id,x,c.user.uid,{expectedVersion:item?.id?item.version||0:null,mode:item?.id?'update':'add'});if(test&&x.selectionMode==='specific'&&!(item?.status==='published'&&x.status==='draft')){let oldCursor=null;do{const oldPage=await page(`${kind}/${id}/items`,{sort:'order',direction:'asc',cursor:oldCursor});for(const oldItem of oldPage.items)await audit(c.user.uid,'remove-test-item',kind,id,[{path:`${kind}/${id}/items/${oldItem.id}`,delete:true}]);oldCursor=oldPage.hasNext?oldPage.cursor:null;}while(oldCursor);for(let i=0;i<specificIds.length;i++){const q=await get('questions/'+specificIds[i]);await audit(c.user.uid,'test-item',kind,id,[{path:`${kind}/${id}/items/${String(i).padStart(4,'0')}`,data:{questionId:q.id,questionVersion:q.version,order:i,createdAt:serverTimestamp()}}]);}}d.close();toast('Content saved.');await refresh();}catch(error){$('#edit-errors',d).textContent=error.safe?error.message:'Could not save. Check the content and retry.';throw error;}});}
-async function preview(kind,item){let s=item;if(kind==='questions'&&item.id&&item.correctOption===undefined)s={...item,...await solution(item)};modal('Content preview',kind==='questions'?`<span class="badge">L${s.level} · ${esc(s.importance)}</span><h2>${esc(s.questionText)}</h2><ol>${s.options.map((o,i)=>`<li>${esc(o)} ${i===s.correctOption?'✓':''}</li>`).join('')}</ol>${sanitize(s.explanationHtml||'')}<p>${esc(s.memoryTrick||'')}</p>`:`<h2>${esc(item.title)}</h2>${sanitize(item.contentHtml||item.bodyHtml||'')}<pre>${esc(JSON.stringify(item.selectionRules||{},null,2))}</pre>`);}
-async function history(kind,item,c,refresh){const p=await page(`${kind}/${item.id}/revisions`,{sort:'recordedAt'});const d=modal('Version history',p.items.map(v=>`<div class="statline"><span>Version ${esc(v.id)}</span><button data-restore="${esc(v.id)}">Restore as draft</button></div>`).join('')||empty('No revisions.'));$$('[data-restore]',d).forEach(b=>b.onclick=action(async()=>{if(!await confirmDialog('Restore this version as a new draft revision?'))return;const version=p.items.find(v=>v.id===b.dataset.restore);await writeContent(kind,item.id,{...version.snapshot,status:'draft'},c.user.uid,{expectedVersion:item.version});d.close();await refresh();toast('Revision restored as draft.');}));}
-
-return {render};
-},
-"admin/dashboard.js":async()=>{
-const {count,page}=await __load("services/db.js");
-const {esc,dayKey,addDays,displayDate}=await __load("utils.js");
-const {metric,empty}=await __load("ui/components.js");
-function adminNav(active=''){return `<nav class="admin-tabs"><a class="btn ${active==='overview'?'active':''}" href="#/admin">Overview</a><a class="btn ${active==='content'?'active':''}" href="#/admin/content">Content</a><a class="btn" href="#/admin/materials">Study materials</a><a class="btn" href="#/admin/mappings">Exam mappings</a><a class="btn ${active==='import'?'active':''}" href="#/admin/import">Import / export</a><a class="btn ${active==='users'?'active':''}" href="#/admin/users">Students / reports</a><a class="btn" href="#/admin/setup">Connection / setup</a><a class="btn ${active==='settings'?'active':''}" href="#/admin/settings">Settings</a></nav>`;}
-async function render(root,{context:c}){if(c.role.role==='editor'){c.go('/admin/content');return;}if(c.role.role==='support'){c.go('/admin/users');return;}const collections=['users','questions','notes','testSets','mockTests','questionReports'];const values=await Promise.all(collections.map(x=>count(x)));const [published,drafts,active,attempts,logs]=await Promise.all([count('questions',[['status','==','published']]),count('questions',[['status','==','draft']]),count('users',[['lastActiveDate','>=',addDays(dayKey(),-7)]]),count('testAttempts',[],true),page('adminAuditLogs',{sort:'recordedAt'})]);const levels=await Promise.all([1,2,3].map(l=>count('questions',[['level','==',l],['status','==','published']])));const importance=await Promise.all(['high','medium','low'].map(i=>count('questions',[['importance','==',i],['status','==','published']])));if(!root.isConnected)return;root.innerHTML=`${adminNav('overview')}<div class="hero"><span>ADMIN CONTROL CENTER</span><h1>Keep learning content reliable</h1><p>Publish carefully, resolve reports and track real usage.</p></div><div class="grid four section">${collections.map((name,i)=>metric(name,values[i],name==='users'?'/admin/users':name==='questionReports'?'/admin/users?tab=reports':'/admin/content?kind='+name)).join('')}${metric('Published questions',published,'/admin/content?kind=questions&status=published')}${metric('Draft questions',drafts,'/admin/content?kind=questions&status=draft')}${metric('Active students · 7 days',active,'/admin/users')}${metric('Test attempts',attempts,'/admin/users?tab=attempts')}</div><div class="grid two section"><section class="card"><h2>Published questions by level</h2>${levels.map((v,i)=>`<a class="statline" href="#/admin/content?kind=questions&level=${i+1}"><span>L${i+1}</span><b>${v}</b></a>`).join('')}</section><section class="card"><h2>Published questions by importance</h2>${importance.map((v,i)=>`<a class="statline" href="#/admin/content?kind=questions&importance=${['high','medium','low'][i]}"><span>${['High','Medium','Low'][i]}</span><b>${v}</b></a>`).join('')}</section></div><section class="card section"><h2>Recent administrative activity</h2>${logs.items.map(x=>`<div class="statline"><span>${esc(x.action)} · ${esc(x.entityType)} / ${esc(x.entityId)}</span><small>${displayDate(x.recordedAt)}</small></div>`).join('')||empty('No administrative activity yet.')}</section><section class="card section"><h2>Database operations</h2><p>Counts above come from Firestore aggregation queries. Billing, total storage and quota consumption must be checked in Firebase Console.</p><a class="btn" href="https://console.firebase.google.com/project/loksewa-2083/firestore" target="_blank" rel="noopener">Open Firebase Console</a></section>`;}
-
-return {adminNav,render};
-},
-"admin/import-export.js":async()=>{
-const {get,page,save,serverTimestamp}=await __load("services/db.js");
-const {writeContent,solution}=await __load("services/content.js");
-const {uid,esc,validateQuestion,download,csv,fail}=await __load("utils.js");
-const {$,$$,action,toast,field,select,empty,confirmDialog}=await __load("ui/components.js");
-const {sanitize}=await __load("ui/editor.js");
-const {validateMaterial}=await __load("services/learning.js");
-const {canEdit}=await __load("auth.js");
-const {adminNav}=await __load("admin/dashboard.js");
-function flattenImport(input){const errors=[],records=[];if(input.schemaVersion!=='1.0')errors.push('schemaVersion must be 1.0');if(input.records){for(const r of input.records){if(!['materials','exams','subjects','chapters','topics','questions','notes','testSets','mockTests','announcements','currentAffairs','formulaSheets'].includes(r.collection)||!r.data)errors.push('Invalid record collection/data');else records.push({kind:r.collection,id:r.id,data:r.data});}return {records,errors};}if(!Array.isArray(input.chapters))return {records,errors:[...errors,'chapters array is required']};const slug=s=>String(s).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu,'-').replace(/^-|-$/g,'');const examId=input.examId||slug(input.exam),subjectId=input.subjectId||slug(input.subject);if(!examId||!subjectId)errors.push('exam and subject are required');records.push({kind:'exams',id:examId,data:{title:input.exam,status:'published',sortOrder:0}},{kind:'subjects',id:subjectId,data:{examId,title:input.subject,status:'published',sortOrder:0}});input.chapters.forEach((ch,ci)=>{const chapterId=ch.id;const ids={examId,subjectId,chapterId};records.push({kind:'chapters',id:chapterId,data:{...ids,title:ch.title,status:ch.status||'published',sortOrder:ci}});if(ch.notes)records.push({kind:'notes',id:chapterId,data:{...ids,title:ch.notes.title||ch.title,contentHtml:sanitize(ch.notes.contentHtml||''),keyFacts:ch.notes.keyFacts||[],commonMistakes:ch.notes.commonMistakes||[],examTips:ch.notes.examTips||[],access:'free',status:ch.notes.status||'draft'}});(ch.topics||[]).forEach((topic,ti)=>{const scope={...ids,topicId:topic.id};records.push({kind:'topics',id:topic.id,data:{...scope,title:topic.title,status:topic.status||'published',sortOrder:ti}});(topic.questions||[]).forEach(q=>{records.push({kind:'questions',id:q.id,data:{...scope,...q,source:typeof q.source==='string'?{title:q.source}:q.source||{},explanationHtml:sanitize(q.explanationHtml||q.explanation||''),status:q.status||'draft',access:q.access||'free',mcq:q.mcq!==false}});});(topic.testSets||[]).forEach(t=>records.push({kind:'testSets',id:t.id,data:{...scope,...t,status:t.status||'draft',access:t.access||'free'}}));});});return {records,errors};}
-async function render(root,{params,context:c}){if(!canEdit())fail('Import and export require editorial access.');let preview=[],errors=[],cancelled=false,committing=false;if(!root.isConnected)return;root.innerHTML=`${adminNav('import')}<h1>Import and export</h1><div class="grid two"><section class="card"><h2>Validate before importing</h2><p class="muted">Files are previewed first. Existing records are never silently replaced.</p><div class="dropzone" id="drop">Drop JSON files here<input type="file" id="files" accept=".json,application/json" multiple aria-label="Choose JSON files"></div>${select('Import mode','mode',[['add','Add new · reject existing IDs'],['update','Update existing IDs'],['upsert','Add or update'],['skip','Skip duplicates']])}<button id="validate" class="primary section">Validate and preview</button><button id="seed" class="section">Load included sample for preview</button><p id="import-status" role="status"></p><progress id="import-progress" value="0" max="1"></progress><div class="row"><button id="commit" disabled>Commit preview</button><button id="cancel">Cancel</button><button id="errors">Download error report</button></div></section><section class="card"><h2>Export your content</h2><form id="export-form" class="form">${select('Collection','collection',['materials','questions','notes','testSets','mockTests','exams','subjects','chapters','topics','currentAffairs','formulaSheets'],params.get('export')||'questions')}${select('Status','status',[['','All'],['published','Published'],['draft','Draft'],['archived','Archived']])}<div class="filters">${field('Subject ID','subjectId')}${field('Chapter ID','chapterId')}${field('Topic ID','topicId')}${select('Level','level',[['','All'],[1,'L1'],[2,'L2'],[3,'L3']])}${select('Importance','importance',[['','All'],['low','Low'],['medium','Medium'],['high','High']])}</div><label>Selected IDs · optional<textarea name="selectedIds"></textarea></label>${select('Format','format',['JSON','CSV'])}<label class="inline-check"><input type="checkbox" name="answers">Include answer key</label><button class="primary">Export matching records</button></form></section></div><section class="card section"><h2>Preview</h2><div id="preview">${empty('Choose files and validate to see the planned changes.')}</div></section>`;let dropped=[];const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};drop.ondragleave=()=>drop.classList.remove('over');drop.ondrop=e=>{e.preventDefault();dropped=[...e.dataTransfer.files];drop.classList.remove('over');toast(dropped.length+' files selected.');};async function validate(inputs){preview=[];errors=[];cancelled=false;$('#commit').disabled=true;const seen=new Map();for(const input of inputs){try{const parsed=typeof input==='object'&&input.schemaVersion?input:JSON.parse(await input.text());const flat=flattenImport(parsed);errors.push(...flat.errors.map(message=>({file:input.name||'sample',message})));for(const r of flat.records){if(!r.id||typeof r.id!=='string'||r.id.includes('/')||r.id.length>180){errors.push({id:r.id,message:'Invalid or missing ID'});continue;}const key=r.kind+'/'+r.id;if(seen.has(key)){if(JSON.stringify(seen.get(key).data)!==JSON.stringify(r.data))errors.push({id:r.id,message:'Conflicting duplicate ID across files'});continue;}const validation=r.kind==='questions'?validateQuestion(r.data):r.kind==='materials'?validateMaterial(r.data):!r.data.title?['Title is required']:[];if(validation.length){errors.push({id:r.id,message:validation.join('. ')});continue;}if(r.data.contentHtml)r.data.contentHtml=sanitize(r.data.contentHtml);const existing=await get(key,{fresh:true});r.exists=!!existing;r.expectedVersion=existing?.version||0;r.operation=existing?'update':'add';seen.set(key,r);preview.push(r);}}catch(e){console.error(e);errors.push({file:input.name||'sample',message:e instanceof SyntaxError?'Invalid JSON syntax':'Validation could not finish; check connection and permissions.'});}}
- const available=new Set(preview.map(r=>r.kind+'/'+r.id));for(const r of preview){for(const [field,kind] of [['examId','exams'],['subjectId','subjects'],['chapterId','chapters'],['topicId','topics']]){if(r.data[field]&&!available.has(kind+'/'+r.data[field])&&!await get(kind+'/'+r.data[field]))errors.push({id:r.id,message:'Unknown '+field+': '+r.data[field]});}}
- $('#preview').innerHTML=`<p><b>${preview.length}</b> valid records · <b>${errors.length}</b> errors</p><div class="tablewrap"><table><thead><tr><th>Type</th><th>ID</th><th>Operation</th></tr></thead><tbody>${preview.map(r=>`<tr><td>${esc(r.kind)}</td><td>${esc(r.id)}</td><td>${r.operation}</td></tr>`).join('')}</tbody></table></div>${errors.slice(0,30).map(e=>`<p class="import-error">${esc(e.id||e.file||'File')}: ${esc(e.message)}</p>`).join('')}`;$('#commit').disabled=!preview.length||errors.length>0;$('#import-status').textContent='Validation complete. No data has been written.';}
- $('#validate').onclick=action(async()=>{const files=dropped.length?dropped:[...$('#files').files];if(!files.length)fail('Choose one or more JSON files.');await validate(files);});$('#seed').onclick=action(async()=>{const response=new Response(JSON.stringify(__resources.sample),{status:200});if(!response.ok)fail('Sample file could not be loaded.');await validate([await response.json()]);});$('#cancel').onclick=()=>{cancelled=true;if(!committing){preview=[];$('#commit').disabled=true;$('#preview').innerHTML=empty('Preview cancelled. No data was written.');}else toast('Cancellation requested. Already committed records remain saved.');};$('#errors').onclick=()=>download('sajilo-import-errors.json',JSON.stringify({errors},null,2));$('#commit').onclick=action(async()=>{if(!preview.length||errors.length)fail('Validate a clean preview first.');const mode=$('[name=mode]').value;if(!await confirmDialog(`Commit ${preview.length} previewed records using ${mode} mode?`))return;cancelled=false;committing=true;const jobId=uid();let succeeded=0,skipped=0,failed=0;await save('importJobs/'+jobId,{actorUid:c.user.uid,mode,status:'committing',total:preview.length,succeeded,skipped,failed,createdAt:serverTimestamp()});const order={exams:0,subjects:1,chapters:2,topics:3,notes:4,questions:5,testSets:6,mockTests:7};preview.sort((a,b)=>(order[a.kind]??8)-(order[b.kind]??8));for(let i=0;i<preview.length;i++){if(cancelled)break;const r=preview[i];try{if(mode==='skip'&&r.exists){skipped++;continue;}if(mode==='add'&&r.exists)fail('Existing ID rejected in Add New mode.');if(mode==='update'&&!r.exists)fail('Missing ID rejected in Update mode.');await writeContent(r.kind,r.id,r.data,c.user.uid,{expectedVersion:r.expectedVersion,mode:mode==='skip'?'add':mode});succeeded++;await save(`importJobs/${jobId}/items/${String(i).padStart(6,'0')}`,{entityType:r.kind,entityId:r.id,status:'completed',operation:r.operation,createdAt:serverTimestamp()});}catch(e){console.error(e);failed++;errors.push({id:r.id,message:e.safe?e.message:'Write failed. See browser console and retry after checking access.'});await save(`importJobs/${jobId}/items/${String(i).padStart(6,'0')}`,{entityType:r.kind,entityId:r.id,status:'failed',errorCode:e.code||'write_failed',createdAt:serverTimestamp()});}$('#import-progress').max=preview.length;$('#import-progress').value=i+1;$('#import-status').textContent=`${succeeded} saved · ${skipped} skipped · ${failed} failed`;}
- await save('importJobs/'+jobId,{status:cancelled?'cancelled':failed?'partial':'completed',succeeded,skipped,failed});committing=false;$('#commit').disabled=true;toast('Import finished. Download the error report if any records failed.');});
- $('#export-form').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));const filters=[];for(const k of ['status','subjectId','chapterId','topicId','importance','level'])if(f[k])filters.push([k,'==',k==='level'?Number(f[k]):f[k]]);const selected=new Set(f.selectedIds.split(/[\s,]+/).filter(Boolean));let cursor=null,records=[];do{const p=await page(f.collection,{filters,cursor});for(const item of p.items){if(selected.size&&!selected.has(item.id))continue;const data={...item};if(f.collection==='questions'&&f.answers)Object.assign(data,await solution(item));records.push({collection:f.collection,id:item.id,data});}cursor=p.hasNext?p.cursor:null;}while(cursor);if(f.format==='JSON')download('sajilo-gk-export.json',JSON.stringify({schemaVersion:'1.0',exportedAt:new Date().toISOString(),records},null,2));else{const keys=[...new Set(records.flatMap(r=>Object.keys(r.data)))];download('sajilo-gk-export.csv',csv([keys,...records.map(r=>keys.map(k=>typeof r.data[k]==='object'?JSON.stringify(r.data[k]):r.data[k]))]),'text/csv;charset=utf-8');}toast(records.length+' records exported.');});}
-
-return {flattenImport,render};
-},
-"admin/materials.js":async()=>{
-const {page,get,save,audit,allPages,serverTimestamp}=await __load("services/db.js");
-const {writeContent,setStatus}=await __load("services/content.js");
-const {catalog,validateMaterial,safeURL,youtubeId}=await __load("services/learning.js");
-const {esc,uid,fail}=await __load("utils.js");
-const {$,$$,action,toast,empty,field,select,modal,pager,confirmDialog}=await __load("ui/components.js");
-const {mountEditor}=await __load("ui/editor.js");
-const {renderBlocks,bindMedia}=await __load("student/learning.js");
-const {canEdit}=await __load("auth.js");
-const {adminNav}=await __load("admin/dashboard.js");
-const types=['heading','text','list','table','image','audio','youtube','link','facts','mistakes','tips','summary'];
-async function render(root,{path,context:c}){if(!canEdit())fail('Editorial access is required.');if(path==='/admin/mappings')return mappings(root,c);let cursor=null,previous=[];async function draw(){const p=await page('materials',{cursor});if(!root.isConnected)return;root.innerHTML=`${adminNav('content')}<div class="page-heading"><div><p class="eyebrow">CONTENT STUDIO</p><h1>Study materials</h1><p class="muted">Topic-level learning materials with independent difficulty and importance.</p></div><button id="new-material" class="primary">＋ Create material</button></div><div class="stack">${p.items.map(m=>`<article class="card"><div class="row between"><div><span class="badge">L${m.level} · ${esc(m.importance)} · ${esc(m.status)}</span><h2>${esc(m.title)}</h2><p class="muted">${esc(m.subjectId)} / ${esc(m.topicId)} · version ${m.version}</p></div><div class="row"><button data-edit-material="${esc(m.id)}">Edit</button><button data-history-material="${esc(m.id)}">History</button><button data-status-material="${esc(m.id)}">${m.status==='deleted'?'Restore':'Archive / delete'}</button></div></div></article>`).join('')||empty('Create your first material, or import the included sample.')}</div>`;$('#new-material').onclick=action(()=>editor(root,null,c,draw));$$('[data-edit-material]').forEach(b=>b.onclick=action(()=>editor(root,p.items.find(m=>m.id===b.dataset.editMaterial),c,draw)));$$('[data-history-material]').forEach(b=>b.onclick=action(async()=>{const m=p.items.find(m=>m.id===b.dataset.historyMaterial),rows=await page(`materials/${m.id}/revisions`,{sort:'recordedAt'});const d=modal('Material history',rows.items.map(v=>`<div class="statline"><span>Version ${esc(v.id)} · ${esc(v.snapshot.title)}</span><button data-restore-material="${esc(v.id)}">Restore as draft</button></div>`).join('')||empty('No revision history.'));$$('[data-restore-material]',d).forEach(button=>button.onclick=action(async()=>{const v=rows.items.find(v=>v.id===button.dataset.restoreMaterial);await writeContent('materials',m.id,{...v.snapshot,status:'draft'},c.user.uid,{expectedVersion:m.version});d.close();toast('Restored as a draft.');}));}));$$('[data-status-material]').forEach(b=>b.onclick=action(async()=>{const m=p.items.find(m=>m.id===b.dataset.statusMaterial);if(!await confirmDialog(m.status==='deleted'?'Restore as draft?':'Archive this material? Historical versions are retained.'))return;await setStatus('materials',m,m.status==='deleted'?'draft':'archived',c.user.uid);await draw();}));pager(root,{hasNext:p.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=previous.pop();return draw();}});}await draw();}
-async function editor(root,item,c,back){const [topics,cat]=await Promise.all([allPages('topics',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'}),catalog()]);let data={title:'',description:'',blocks:[{id:uid(),type:'heading',text:'Start with the concept'},{id:uid(),type:'text',html:'<p>Explain the idea clearly.</p>'}],level:1,importance:'high',status:'draft',access:'free',source:{title:'',url:''},...item};if(item){const draft=await get(`materials/${item.id}/drafts/current`,{fresh:true});if(draft?.snapshot)data={...data,...draft.snapshot};}let blocks=structuredClone(data.blocks);let editors=new Map();if(!root.isConnected)return;root.innerHTML=`${adminNav('content')}<div class="page-heading"><h1>${item?'Edit':'Create'} study material</h1><button id="material-back">Back to library</button></div><form id="material-form" class="material-editor-grid"><section class="card form">${field('Material title','title',data.title,'text','required maxlength="250"')}<label>Description<textarea name="description" maxlength="2000">${esc(data.description||'')}</textarea></label><div id="block-list"></div><div class="row">${select('New block type','blockType',types)}<button type="button" id="add-block">＋ Add block</button></div></section><aside class="card material-editor-panel form">${select('Topic','topicId',[['','Choose topic'],...topics.map(t=>[t.id,cat.subjects.find(s=>s.id===t.subjectId)?.title+' / '+t.title])],data.topicId||'')}${select('Difficulty','level',[[1,'L1 Basic'],[2,'L2 Medium'],[3,'L3 Advanced']],data.level)}${select('Editorial importance','importance',['low','medium','high'],data.importance)}${select('Access','access',['free','premium'],data.access)}${select('Status','status',['draft','published','archived'],data.status==='deleted'?'draft':data.status)}${field('Source title','sourceTitle',data.source?.title||'')}${field('Source URL','sourceUrl',data.source?.url||'','url')}<p id="material-errors" class="danger" role="alert"></p><button type="button" id="preview-material">Student preview</button><button type="button" id="save-draft">Save draft</button><button class="primary">Save selected status</button></aside></form>`;
- function capture(){for(const wrapper of $$('[data-block-editor]',root)){const id=wrapper.dataset.blockEditor,b=blocks.find(b=>b.id===id);for(const input of $$('input,textarea',wrapper))if(input.name){if(input.name==='items')b.items=input.value.split('\n').filter(Boolean);else if(input.name==='rows'){try{b.rows=JSON.parse(input.value);}catch{fail('Table rows must be valid JSON arrays.');}}else b[input.name]=input.value;}if(editors.has(id))b.html=editors.get(id).value();}}
- function drawBlocks(){editors.clear();$('#block-list').innerHTML=blocks.map((b,i)=>`<section class="block-editor-item" data-block-editor="${esc(b.id)}"><div class="block-controls"><b>${i+1}. ${esc(b.type)}</b><button type="button" data-move="${i}" data-direction="-1" ${i===0?'disabled':''} aria-label="Move block ${i+1} up">↑</button><button type="button" data-move="${i}" data-direction="1" ${i===blocks.length-1?'disabled':''} aria-label="Move block ${i+1} down">↓</button><button type="button" data-remove-block="${i}">Remove</button></div>${b.type==='text'?`<div data-rich="${esc(b.id)}"></div>`:b.type==='table'?`<label>Rows as JSON · first row is headings<textarea name="rows">${esc(JSON.stringify(b.rows||[['Heading','Heading'],['Value','Value']],null,2))}</textarea></label>`:['image','audio','youtube','link'].includes(b.type)?`${field(b.type==='youtube'?'YouTube URL':'HTTPS or same-site URL','url',b.url||'')}${b.type==='image'?field('Alt text','alt',b.alt||'')+field('Caption','caption',b.caption||''):field('Title','title',b.title||'')}${['audio','youtube'].includes(b.type)?`<label>Transcript / accessible summary<textarea name="transcript">${esc(b.transcript||'')}</textarea></label>`:''}`:b.type==='list'?`<label>One item per line<textarea name="items">${esc((b.items||[]).join('\n'))}</textarea></label>`:`<label>${b.type==='heading'?'Heading':'Text'}<textarea name="text">${esc(b.text||'')}</textarea></label>`}</section>`).join('');$$('[data-rich]').forEach(el=>{const b=blocks.find(x=>x.id===el.dataset.rich);editors.set(b.id,mountEditor(el,b.html||''));});$$('[data-move]').forEach(b=>b.onclick=action(async()=>{capture();const i=Number(b.dataset.move),j=i+Number(b.dataset.direction);[blocks[i],blocks[j]]=[blocks[j],blocks[i]];drawBlocks();}));$$('[data-remove-block]').forEach(b=>b.onclick=action(async()=>{capture();const i=Number(b.dataset.removeBlock);if(!await confirmDialog('Remove this block from the draft? Unsaved content in it will be removed.'))return;blocks.splice(i,1);drawBlocks();}));}
- drawBlocks();$('#add-block').onclick=action(async()=>{capture();if(blocks.length>=60)fail('At most 60 blocks per material.');blocks.push({id:uid(),type:$('[name=blockType]').value});drawBlocks();});function collect(status){capture();const f=Object.fromEntries(new FormData($('#material-form'))),t=topics.find(t=>t.id===f.topicId);if(!t)fail('Choose a valid topic.');const m={...data,title:f.title,description:f.description,topicId:t.id,chapterId:t.chapterId,subjectId:t.subjectId,examId:t.examId,level:Number(f.level),importance:f.importance,access:f.access,status:status||f.status,source:{title:f.sourceTitle,url:f.sourceUrl},blocks};const errors=validateMaterial(m);for(const b of blocks){if(['image','audio','link'].includes(b.type)&&!safeURL(b.url))errors.push('Unsupported or unsafe media URL.');if(b.type==='youtube'&&!youtubeId(b.url))errors.push('Invalid YouTube video URL.');}if(m.status==='published'&&!m.source.title.trim())errors.push('Published materials require a source title.');if(errors.length)fail(errors.join('. '));return m;}
- $('#preview-material').onclick=action(async()=>{const m=collect('draft'),d=modal('Student preview',`<span class="badge">L${m.level} · ${esc(m.importance)}</span><h1>${esc(m.title)}</h1><div class="note-body">${renderBlocks(m.blocks)}</div>`);bindMedia(d);});async function commit(status){try{const m=collect(status);await writeContent('materials',item?.id||uid(),m,c.user.uid,{mode:item?'update':'add',expectedVersion:item?.version??0});toast(m.status==='draft'?'Draft saved. Published content remains unchanged.':'Material saved.');await back();}catch(error){$('#material-errors').textContent=error.safe?error.message:'Could not save. Review fields and retry.';throw error;}}$('#material-form').onsubmit=action(async e=>{e.preventDefault();await commit();});$('#save-draft').onclick=action(()=>commit('draft'));$('#material-back').onclick=action(async()=>{if(await confirmDialog('Leave the editor? Unsaved changes will be discarded.'))await back();});}
-async function mappings(root,c){const cat=await catalog();if(!root.isConnected)return;root.innerHTML=`${adminNav('content')}<h1>Examination ↔ subject mappings</h1><p class="muted">One canonical subject can belong to several examinations. This avoids duplicate My Subjects cards.</p><div class="stack">${cat.subjects.map(s=>`<form class="card mapping-form" data-subject="${esc(s.id)}"><h2>${esc(s.title)}</h2><div class="grid three">${cat.exams.map(e=>`<label class="inline-check"><input type="checkbox" name="examIds" value="${esc(e.id)}" ${(s.examIds||[s.examId]).includes(e.id)?'checked':''}>${esc(e.title)}</label>`).join('')}</div><button class="primary section">Save mappings</button></form>`).join('')||empty('Create examinations and canonical subjects in Content first.')}</div>`;$$('.mapping-form').forEach(form=>form.onsubmit=action(async e=>{e.preventDefault();const s=cat.subjects.find(s=>s.id===form.dataset.subject),examIds=new FormData(form).getAll('examIds');if(!examIds.length)fail('Map this subject to at least one examination.');await writeContent('subjects',s.id,{...s,examIds,examId:examIds[0]},c.user.uid,{expectedVersion:s.version});toast('Canonical subject mappings saved. Reload the student catalog to see the change.');}));}
-
-return {render};
-},
-"admin/overview.js":async()=>{
-const {count,page}=await __load("services/db.js");
-const {esc,dayKey,addDays,displayDate,friendly}=await __load("utils.js");
-const {$,action,metric,empty}=await __load("ui/components.js");
-const {adminNav}=await __load("admin/dashboard.js");
-async function render(root,{context:c}){if(c.role?.role==='editor'){c.go('/admin/content');return;}if(c.role?.role==='support'){c.go('/admin/users');return;}const cards=[['Students','users','/admin/users'],['Questions','questions','/admin/content?kind=questions'],['Study materials','materials','/admin/materials'],['Examinations','exams','/admin/content?kind=exams'],['Subjects','subjects','/admin/content?kind=subjects'],['Chapters','chapters','/admin/content?kind=chapters'],['Topics','topics','/admin/content?kind=topics'],['Level test sets','testSets','/admin/content?kind=testSets'],['Mock tests','mockTests','/admin/content?kind=mockTests'],['Reports','questionReports','/admin/users?tab=reports']];const results=await Promise.allSettled(cards.map(([,kind])=>count(kind)));const [published,drafts,active,attempts,logs]=await Promise.allSettled([count('questions',[['status','==','published']]),count('questions',[['status','==','draft']]),count('users',[['lastActiveDate','>=',addDays(dayKey(),-7)]]),count('testAttempts',[],true),page('adminAuditLogs',{sort:'recordedAt'})]);const value=result=>result.status==='fulfilled'?result.value:'Unavailable';const failures=[...results,published,drafts,active,attempts,logs].filter(r=>r.status==='rejected');failures.forEach(r=>console.error('Admin overview query failed',r.reason));if(!root.isConnected)return;root.innerHTML=`${adminNav('overview')}<section class="hero admin-hero"><p class="eyebrow">SAJILO GK · CONTROL CENTER</p><h1>Welcome to your admin workspace.</h1><p>Manage your syllabus, publish useful materials and help students prepare with confidence.</p><div class="row"><a class="btn" href="#/admin/content?kind=questions">Manage questions</a><a class="btn" href="#/admin/materials">Manage study materials</a><a class="btn" href="#/admin/import">Import content</a></div></section>${failures.length?`<div class="account-notice section" role="status"><span>${failures.length} summaries are unavailable. Successful counts below are real; failed counts are not shown as zero.</span><a class="btn primary" href="#/admin/setup">Check connection / Rules</a><button id="retry-overview">Retry summaries</button></div>`:''}<div class="grid four section">${cards.map(([label,,url],i)=>metric(label,value(results[i]),url)).join('')}${metric('Published questions',value(published),'/admin/content?kind=questions&status=published')}${metric('Draft questions',value(drafts),'/admin/content?kind=questions&status=draft')}${metric('Active students · 7 days',value(active),'/admin/users')}${metric('Test attempts',value(attempts),'/admin/users?tab=attempts')}</div><div class="grid two section"><section class="card"><h2>Student access and settings</h2><p>Grant premium days, suspend accounts, resolve reports and manage your website’s configuration.</p><div class="row"><a class="btn primary" href="#/admin/users">Students & staff permissions</a><a class="btn" href="#/admin/settings">Site settings</a><a class="btn" href="#/admin/mappings">Exam / subject mappings</a></div></section><section class="card"><h2>Connection and first setup</h2><p>The verified primary owner has full admin access without a manually created role document. Publish the updated Firebase Rules once to activate it on the server.</p><a class="btn" href="#/admin/setup">Open connection & setup</a></section></div><section class="card section"><h2>Recent administrative activity</h2>${logs.status==='fulfilled'?(logs.value.items.map(log=>`<div class="statline"><span>${esc(log.action)} · ${esc(log.entityType)} / ${esc(log.entityId)}</span><small>${displayDate(log.recordedAt)}</small></div>`).join('')||empty('No administrative actions recorded yet.')):`<p class="muted">${esc(friendly(logs.reason))}</p>`}</section>`;if($('#retry-overview'))$('#retry-overview').onclick=action(()=>render(root,{context:c}));}
-
-return {render};
-},
-"admin/setup.js":async()=>{
-const {refreshUser,canManage,logout}=await __load("auth.js");
-const {PRIMARY_ADMIN_EMAIL,isPrimaryAdmin}=await __load("services/access.js");
-const {get}=await __load("services/db.js");
-const {esc,download}=await __load("utils.js");
-const {$,action,toast}=await __load("ui/components.js");
-const {adminNav}=await __load("admin/dashboard.js");
-async function render(root,{context:c}){if(!canManage())throw Object.assign(new Error('Administrator access is required.'),{safe:true});if(!root.isConnected)return;root.innerHTML=`${adminNav('setup')}<div class="hero"><span class="eyebrow">OWNER SETUP & CONNECTION</span><h1>Your admin controls live here.</h1><p>The verified owner is ${esc(PRIMARY_ADMIN_EMAIL)}. No manual owner-role document is needed with this version’s Rules.</p></div><div class="grid two section"><section class="card"><h2>Signed-in account</h2><div class="statline"><span>Email</span><b>${esc(c.user.email)}</b></div><div class="statline"><span>Email verified</span><b>${c.user.emailVerified?'Yes':'No'}</b></div><div class="statline"><span>Access</span><b>${isPrimaryAdmin(c.user)?'Primary owner':'Delegated administrator'}</b></div><div class="statline"><span>Firebase project</span><b>loksewa-2083</b></div><div class="row section"><button id="check-connection" class="primary">Check connection</button><button id="refresh-token">Refresh login</button><button id="setup-out">Sign out</button></div><div id="connection-results" class="section" role="status"></div></section><section class="card"><h2>One-time Rules update</h2><p>The public Firebase web configuration cannot publish security Rules. Publish the bundled Rules once in Firebase Console or with the Firebase CLI.</p><ol><li>Copy the complete Rules below.</li><li>Open Firestore Database → Rules for loksewa-2083.</li><li>Save a copy of previous Rules, paste these Rules, and Publish.</li><li>Return here and choose Refresh login.</li></ol><div class="row"><a class="btn" href="https://console.firebase.google.com/project/loksewa-2083/firestore/rules" target="_blank" rel="noopener noreferrer">Open Firebase Rules</a><a class="btn" href="#/admin/import">Import content</a></div></section></div><section class="card section"><div class="row between"><h2>Rules from this website version</h2><div class="row"><button id="copy-rules" disabled>Copy complete Rules</button><button id="download-rules" disabled>Download rules.txt</button></div></div><p id="rules-status" role="status">Loading the bundled Rules…</p><textarea id="rules-text" readonly spellcheck="false" aria-label="Complete Firestore Rules" rows="14"></textarea></section><section class="card section"><h2>Hosting and indexes</h2><button id="download-indexes">Download indexes.json</button><button id="download-config">Download firebase.json</button><p>Enable Email/Password and Google in Firebase Authentication. Add your GitHub Pages hostname to Authentication → Settings → Authorized domains. Upload index.html, style.css and script.js together. Use an HTTP server for local testing.</p><p>Use Download indexes below, then deploy the downloaded file when queries require an index. GitHub Pages hosts the application; authentication providers and authorized domains are configured once in Firebase Console.</p><p>Download firestore.rules, indexes.json and firebase.json into the same folder. Install the Firebase CLI, open that folder in a terminal, then run:</p><pre>firebase login\nfirebase deploy --only firestore:rules,firestore:indexes --project loksewa-2083</pre><p>Questions and student progress are stored in Firestore. No question bank or dashboard totals are used as browser-only data. The optional sample import is a preview until you confirm its write.</p><p>Assessment limitation: on static hosting, entitled students can inspect answer requests. Use trusted server grading for examinations that require integrity. This release uses cached reading but does not register a PWA service worker.</p><p>Manage questions, materials, examination mappings, tests, reports, student access and settings using the Admin navigation above.</p></section>`;
-$('#download-config').onclick=()=>download('firebase.json',JSON.stringify({firestore:{rules:'firestore.rules',indexes:'indexes.json'}},null,2),'application/json');$('#download-indexes').onclick=()=>download('indexes.json',JSON.stringify(__resources.indexes,null,2),'application/json');$('#setup-out').onclick=action(logout);$('#refresh-token').onclick=action(async()=>{await refreshUser();toast('Login refreshed.');c.go('/admin');});$('#check-connection').onclick=action(async()=>{const rows=await Promise.allSettled([get('appSettings/public',{fresh:true}),get('users/'+c.user.uid,{fresh:true})]);$('#connection-results').innerHTML=rows.map((r,i)=>`<div class="statline"><span>${i?'Own profile':'Public settings'}</span><b>${r.status==='fulfilled'?(r.value?'Readable':'Readable · not created yet'):'Blocked · '+esc(r.reason.code||'connection error')}</b></div>`).join('');});
-try{const response=new Response(__resources.rules,{status:200});if(!response.ok)throw Error('Rules file HTTP '+response.status);const rules=await response.text();if(!rules.startsWith('rules_version'))throw Error('The deployed Rules file was not found.');$('#rules-text').value=rules;$('#rules-status').textContent='Copy the entire file, including rules_version and all closing braces.';$('#copy-rules').disabled=false;$('#download-rules').disabled=false;$('#copy-rules').onclick=action(async()=>{await navigator.clipboard.writeText(rules);toast('Complete Rules copied.');});$('#download-rules').onclick=()=>download('firestore.rules',rules,'text/plain;charset=utf-8');}catch(error){console.error(error);$('#rules-status').textContent='The Rules file could not load. Use firestore.rules from the ZIP and include the firebase folder when uploading your website.';}
-}
-
-return {render};
-},
-"admin/users.js":async()=>{
-const {get,page,count,audit,serverTimestamp,Timestamp}=await __load("services/db.js");
-const {esc,displayDate,dayKey,asDate,fail}=await __load("utils.js");
-const {$,$$,action,toast,empty,field,select,modal,pager,confirmDialog}=await __load("ui/components.js");
-const {adminNav}=await __load("admin/dashboard.js");
-const {canManage,canDelegate}=await __load("auth.js");
-const {isPrimaryEmail}=await __load("services/access.js");
-async function render(root,{path,params,context:c}){if(path==='/admin/settings')return settings(root,c);if(params.get('tab')==='reports')return reports(root,c);if(params.get('tab')==='attempts')return attempts(root,c);return students(root,c);}
-function tabs(){return '<div class="row section"><a class="btn" href="#/admin/users">Students</a><a class="btn" href="#/admin/users?tab=reports">Question reports</a><a class="btn" href="#/admin/users?tab=attempts">Test attempts</a></div>';}
-async function students(root,c){if(!canManage()&&c.role.role!=='support')fail('Student management requires support or administrator access.');let cursor=null,history=[],search='';async function draw(){const filters=search?[['email','==',search]]:[];const p=await page('users',{filters,cursor});if(!root.isConnected)return;root.innerHTML=`${adminNav('users')}<h1>Students</h1>${tabs()}<form id="student-search" class="filters">${field('Exact email','email',search,'email')}<button>Search</button><button type="button" id="clear">Clear</button></form><div class="tablewrap card section"><table><thead><tr><th>Name</th><th>Email</th><th>Target exam</th><th>Actions</th></tr></thead><tbody>${p.items.map(u=>`<tr><td>${esc(u.displayName)}</td><td>${esc(u.email)}</td><td>${esc(u.targetExamId||'All')}</td><td><button data-user="${esc(u.id)}">View student</button></td></tr>`).join('')}</tbody></table>${!p.items.length?empty('No students match.'):''}</div>`;$('#student-search').onsubmit=action(async e=>{e.preventDefault();search=new FormData(e.currentTarget).get('email').trim();cursor=null;history=[];await draw();});$('#clear').onclick=action(async()=>{search='';cursor=null;history=[];await draw();});$$('[data-user]').forEach(b=>b.onclick=action(()=>detail(p.items.find(u=>u.id===b.dataset.user),c)));pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-async function detail(user,c){const base=`users/${user.id}`;const [summary,access,history,activity]=await Promise.all([get(base+'/summary/current',{fresh:true}),get(base+'/access/current',{fresh:true}),page(base+'/testAttempts'),page(base+'/dailyActivity',{sort:'dateKey'})]);const staff=canDelegate()?await get('adminRoles/'+user.id,{fresh:true}):null;const d=modal('Student profile',`<h2>${esc(user.displayName)}</h2><p>${esc(user.email)} · ${esc(user.id)}</p><p>Attempts: ${summary?.attempts||0} · Correct: ${summary?.correct||0} · Mastered: ${summary?.mastered||0}</p><p>Access: ${esc(access?.status||'active')} · Premium: ${displayDate(access?.premiumUntil)}</p><h3>Recent tests</h3>${history.items.map(a=>`<p>${esc(a.title)} · ${a.result?.percentage??'Active'}%</p>`).join('')||'<p>No attempts.</p>'}<h3>Recent activity</h3>${activity.items.map(a=>`<p>${esc(a.dateKey)} · ${a.attempted||0} answers</p>`).join('')||'<p>No activity.</p>'}${canManage()&&!isPrimaryEmail(user)?`<form id="access-form" class="form">${select('Account status','status',['active','suspended'],access?.status||'active')}${field('Grant premium days (0 revokes)','days',0,'number','min="0" max="3650" required')}${field('Reason','reason',access?.reason||'')}<button class="primary">Update access</button></form><p class="muted">The primary owner can manage staff permissions below. Student access and staff roles are separate.</p>`:''}`);if($('#access-form',d))$('#access-form',d).onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));if(!await confirmDialog('Apply these access changes to this student?'))return;await audit(c.user.uid,'student-access','users',user.id,[{path:base+'/access/current',data:{status:f.status,premiumUntil:Number(f.days)>0?Timestamp.fromDate(new Date(Date.now()+Number(f.days)*86400000)):null,reason:f.reason,changedBy:c.user.uid,createdAt:access?.createdAt||serverTimestamp()}}]);toast('Student access updated.');d.close();});if(canDelegate()&&!isPrimaryEmail(user)){const panel=document.createElement('section');panel.className='section';panel.innerHTML=`<hr><h3>Staff permissions</h3><p class="muted">Only the verified primary owner can grant or revoke staff privileges.</p><form id="staff-form" class="form">${select('Role','role',['admin','editor','support'],staff?.role||'editor')}<label class="inline-check"><input type="checkbox" name="enabled" ${staff?.enabled?'checked':''}>Enable staff access</label><button class="primary">Save staff permissions</button></form>`;d.append(panel);$('#staff-form',d).onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));if(!await confirmDialog('Apply these staff permissions to '+user.email+'?'))return;await audit(c.user.uid,'staff-role','adminRoles',user.id,[{path:'adminRoles/'+user.id,data:{role:f.role,enabled:!!f.enabled,assignedBy:c.user.uid,assignedAt:serverTimestamp(),createdAt:staff?.createdAt||serverTimestamp()}}]);toast('Staff permissions saved. The user should refresh their login.');d.close();});}}
-async function reports(root,c){let cursor=null,history=[],status='pending';async function draw(){const p=await page('questionReports',{filters:status?[['status','==',status]]:[],cursor});if(!root.isConnected)return;root.innerHTML=`${adminNav('users')}<h1>Question reports</h1>${tabs()}<form id="report-filter" class="filters">${select('Status','status',[['pending','Pending'],['resolved','Resolved'],['','All']],status)}<button>Apply</button></form><div class="stack">${p.items.map(r=>`<article class="card"><span class="badge">${esc(r.status)}</span><h3>${esc(r.reason)} · ${esc(r.questionId)}</h3><p>${esc(r.details)}</p><p class="muted">${displayDate(r.createdAt)}</p><button data-resolve="${esc(r.id)}">Details / resolve</button><a class="btn" href="#/admin/content?kind=questions">Open content editor</a></article>`).join('')||empty('No matching reports.')}</div>`;$('#report-filter').onsubmit=action(async e=>{e.preventDefault();status=new FormData(e.currentTarget).get('status');cursor=null;history=[];await draw();});$$('[data-resolve]').forEach(b=>b.onclick=()=>{const r=p.items.find(x=>x.id===b.dataset.resolve);const d=modal('Resolve report',`<p>${esc(r.details)}</p><form id="resolve" class="form">${select('Status','status',['pending','resolved'],r.status)}<label>Resolution notes<textarea name="resolutionNotes" maxlength="3000" required>${esc(r.resolutionNotes||'')}</textarea></label><button class="primary">Save resolution</button></form>`);$('#resolve',d).onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));await audit(c.user.uid,'resolve-report','questionReports',r.id,[{path:'questionReports/'+r.id,data:{...f,resolvedBy:c.user.uid,resolvedAt:serverTimestamp()}}]);d.close();await draw();});});pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-async function attempts(root){let cursor=null,history=[];async function draw(){const p=await page('testAttempts',{group:true,cursor});if(!root.isConnected)return;root.innerHTML=`${adminNav('users')}<h1>Test attempts</h1>${tabs()}<div class="stack section">${p.items.map(a=>`<article class="card row between"><b>${esc(a.title)}</b><span>${esc(a.status)} · ${a.result?.percentage??'—'}%</span><small>${displayDate(a.startedAt)}</small></article>`).join('')||empty()}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-async function settings(root,c){if(!canManage())fail('Only administrators can change site settings.');const [pub,policy]=await Promise.all([get('appSettings/public',{fresh:true}),get('appSettings/policy',{fresh:true})]);if(!root.isConnected)return;root.innerHTML=`${adminNav('settings')}<h1>Site settings</h1><form id="settings" class="card form">${field('Site title','title',pub?.title||'Sajilo GK','text','required maxlength="80"')}${field('Tagline','tagline',pub?.tagline||'Smart Loksewa Preparation Made Simple','text','maxlength="180"')}${field('Logo URL (HTTPS)','logoUrl',pub?.logoUrl||'','url')}${field('Primary color','primaryColor',pub?.primaryColor||'#2457d6','color')}${field('Welcome text','welcomeText',pub?.welcomeText||'One clear goal. A little progress every day.')}${field('Active exam IDs · comma separated','activeExams',(pub?.activeExams||[]).join(', '))}<div class="grid two">${[['registrationOpen','Registration open',policy?.registrationOpen!==false],['premiumEnabled','Premium content gating',policy?.premiumEnabled!==false],['maintenance','Maintenance mode',pub?.maintenance||false],['notesVisible','Notes visible',pub?.notesVisible!==false],['levelsEnabled','Study levels visible',pub?.levelsEnabled!==false]].map(([name,label,on])=>`<label class="inline-check"><input type="checkbox" name="${name}" ${on?'checked':''}>${label}</label>`).join('')}</div><label>Feature flags JSON<textarea name="features">${esc(JSON.stringify(pub?.features||{planner:true,currentAffairs:true,formulas:true,leaderboard:false},null,2))}</textarea></label><label>Mock defaults JSON<textarea name="mockDefaults">${esc(JSON.stringify(policy?.mockDefaults||{questionCount:20,durationSeconds:1200,marksPerQuestion:1,negativeMarks:0,passPercentage:60},null,2))}</textarea></label><button class="primary">Save settings</button></form>`;$('#settings').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));const features=JSON.parse(f.features),mockDefaults=JSON.parse(f.mockDefaults);if(typeof features!=='object'||Array.isArray(features)||Object.values(features).some(v=>typeof v!=='boolean'))fail('Feature flags must be boolean values.');if(mockDefaults.questionCount<1||mockDefaults.questionCount>100||mockDefaults.durationSeconds<60||mockDefaults.marksPerQuestion<=0||mockDefaults.negativeMarks<0||mockDefaults.passPercentage<0||mockDefaults.passPercentage>100)fail('Invalid mock defaults.');if(f.maintenance&&!await confirmDialog('Maintenance mode blocks student routes. Enable it?'))return;await audit(c.user.uid,'settings','appSettings','public',[{path:'appSettings/public',data:{title:f.title,tagline:f.tagline,logoUrl:f.logoUrl,primaryColor:f.primaryColor,welcomeText:f.welcomeText,activeExams:f.activeExams.split(',').map(x=>x.trim()).filter(Boolean),maintenance:!!f.maintenance,notesVisible:!!f.notesVisible,levelsEnabled:!!f.levelsEnabled,features,createdAt:pub?.createdAt||serverTimestamp()}},{path:'appSettings/policy',data:{registrationOpen:!!f.registrationOpen,premiumEnabled:!!f.premiumEnabled,mockDefaults,createdAt:policy?.createdAt||serverTimestamp()}}]);toast('Settings saved. Reload to apply visual settings.');});}
-
-return {render};
-},
-"app.js":async()=>{
-const {esc,friendly,debounce,tokens,uid}=await __load("utils.js");
-const {$,$$,skeleton,toast,showError,action,renderError,modal,field,select,empty,pager,setLanguage,observeLanguage}=await __load("ui/components.js");
-const {mountShell}=await __load("ui/navigation.js");
-const {navigationState,routeModule,isPrimaryEmail}=await __load("services/access.js");
-const modules={};let authModule,dbModule,cleanup=()=>{},leaveGuard=null,activeHash='',generation=0,installPrompt;
-const state={settings:{}};
-const context={get settings(){return state.settings;},get user(){return authModule.session.user;},get profile(){return authModule.session.profile;},get role(){return authModule.session.role;},go:path=>location.hash=path,setCleanup:fn=>cleanup=fn,setLeaveGuard:fn=>leaveGuard=fn};
-const routes=[['/','Home'],['/my-subjects','My Subjects'],['/revision','Revision'],['/tests','Tests'],['/saved','Saved']];
-const extra=[['/profile','Profile & preferences'],['/progress','Progress'],['/planner','Study planner'],['/current-affairs','Current affairs'],['/formulas','Formula sheets'],['/notifications','Notifications'],['/search','Search']];
-function shell(path){const result=mountShell(path,authModule,extra);if(result.retry)result.retry.onclick=action(async()=>{await authModule.refreshUser();await route();});}
-async function load(name){return modules[name]??=await __load(name+'.js');}
-async function route(){const requested=location.hash;if(leaveGuard&&requested!==activeHash){const guard=leaveGuard;leaveGuard=null;if(!await guard()){location.hash=activeHash;leaveGuard=guard;return;}}activeHash=requested;const token=++generation;cleanup();cleanup=()=>{};document.body.classList.remove('exam-focus');document.querySelectorAll('dialog').forEach(d=>d.close());const {path,params}=navigationState(location.hash);shell(path);const root=$('#main');if(!authModule||!authModule.session.ready)return;try{
- if(['/welcome','/login','/signup','/reset-password'].includes(path)){await authPage(root,path);return;}
- if(!context.user){context.go(path==='/'?'/welcome':'/login');return;}
- if(path==='/profile'){const profileModule=await load('student/dashboard');if(token!==generation)return;await profileModule.render(root,{path,params,context});return;}
- if(context.user.emailVerified===false){root.innerHTML=`<div class="card auth"><h1>Verify your email</h1><p>Open the verification email before saving progress or starting tests.</p><div class="row"><button id="send">Resend email</button><button id="verified" class="primary">I have verified</button><button id="out">Sign out</button></div></div>`;$('#send').onclick=action(async()=>{await authModule.verifyEmail();toast('Verification email sent.');});$('#verified').onclick=action(async()=>{await authModule.refreshUser();route();});$('#out').onclick=action(authModule.logout);return;}
- if(authModule.session.loadingProfile&&path!=='/admin/setup'){root.innerHTML='<section class="card"><h1>Welcome back</h1><p>Loading your saved learning preferences…</p><div class="skeleton"></div><div class="row"><a class="btn" href="#/profile">Open Profile</a>'+(isPrimaryEmail(context.user)?'<a class="btn" href="#/admin/setup">Connection & setup</a>':'')+'</div></section>';return;}
- if(authModule.session.access?.status==='suspended'&&!authModule.canDelegate()){root.innerHTML=empty('This account is suspended. Contact the administrator.');return;}
- if(path.startsWith('/admin')&&!authModule.canAdmin()){root.innerHTML=empty('You do not have administrator access.');return;}
- if(path==='/admin/setup'){const setup=await load('admin/setup');if(token!==generation)return;await setup.render(root,{path,params,context});return;}if(path!=='/search'&&path!=='/study'&&!routeModule(path)){root.innerHTML='<div class="card empty"><h1>Page not found</h1><p>The link may be outdated. Choose a destination from navigation.</p><a class="btn primary" href="#/">Home</a></div>';return;}const settings=await dbModule.get('appSettings/public');const policy=await dbModule.get('appSettings/policy');state.settings={...(settings||{}),policy:policy||{}};setLanguage(context.profile.preferences?.language||'en');dbModule.setEntitlement(authModule.canAdmin()||policy?.premiumEnabled===false||(authModule.session.access?.premiumUntil&&new Date((authModule.session.access.premiumUntil.seconds||0)*1000)>new Date()));if(settings?.primaryColor&&/^#[0-9a-f]{6}$/i.test(settings.primaryColor))document.documentElement.style.setProperty('--primary',settings.primaryColor);if(settings?.title)document.title=settings.title;document.querySelectorAll('.brand').forEach(b=>{b.lastChild.textContent=settings?.title||'Sajilo GK';});if(settings?.maintenance&&!authModule.canAdmin()){root.innerHTML=empty('The site is under maintenance. Please return later.');return;}if(settings?.notesVisible===false&&(path.startsWith('/notes/')||path.startsWith('/materials/'))&&!authModule.canAdmin()){root.innerHTML=empty('Chapter notes are temporarily hidden.');return;}const featureRoute={'/planner':'planner','/current-affairs':'currentAffairs','/formulas':'formulas'};if(featureRoute[path]&&settings?.features?.[featureRoute[path]]===false&&!authModule.canAdmin()){root.innerHTML=empty('This feature is currently disabled.');return;}
- if(!context.profile.onboardingComplete&&!authModule.canAdmin()&&!path.startsWith('/onboarding/')&&!path.startsWith('/admin')&&path!=='/profile'){context.go('/onboarding/'+(context.profile.onboardingStep==='subjects'?'subjects':'exams'));return;}if(path==='/study'){context.go('/my-subjects');return;}let name,method='render',args={path,params,context};
- if(path==='/search'){await search(root,params);return;}name=routeModule(path);
- const module=await load(name);if(token!==generation)return;await module[method](root,args);if(token!==generation)return;root.focus({preventScroll:true});
- }catch(e){if(token===generation)renderError(root,e,route);}}
-async function authPage(root,path){if(path==='/welcome'){root.innerHTML=`<section class="welcome-layout"><div class="welcome-message"><span class="brand-symbol">S</span><p class="eyebrow">SAJILO GK</p><h1>तयारी सजिलो।<br>सम्झना बलियो।</h1><p>Smart Loksewa Preparation Made Simple</p><div class="learning-loop"><span>Read</span><span>Recall</span><span>Revise</span></div></div><div class="card welcome-options"><div class="book-illustration"><span>GK</span><p>Learn a little.<br>Remember more.</p></div><h2>Your next small step.</h2><a class="btn primary" href="#/login">Continue to your account</a><a class="btn" href="#/signup">Create a new account</a><button id="welcome-google">Continue with Google</button><p class="muted">Choose your examination and subjects after signing in.</p></div></section>`;$('#welcome-google').onclick=action(async()=>{await authModule.googleLogin();context.go(isPrimaryEmail(authModule.session.user)?'/admin':'/');});return;}const signup=path==='/signup',reset=path==='/reset-password';root.innerHTML=`<div class="card auth"><span class="badge">Sajilo GK</span><h1>${signup?'Create your account':reset?'Reset password':'Welcome back'}</h1><p class="muted">Learn systematically. Revise with confidence.</p><form id="auth-form" class="form">${signup?field('Full name','name','','text','required maxlength="100"'):''}${field('Email','email','','email','required autocomplete="email"')}${!reset?field('Password','password','','password',`required minlength="8" autocomplete="${signup?'new-password':'current-password'}"`):''}<p id="auth-error" class="danger" role="alert"></p><button class="primary">${signup?'Create account':reset?'Send reset email':'Sign in'}</button></form>${!reset?'<button id="google" style="width:100%;margin-top:12px">Continue with Google</button>':''}<hr><div class="row"><a href="#${signup?'/login':'/signup'}">${signup?'Already have an account?':'Create account'}</a><a href="#/reset-password">Forgot password?</a></div></div>`;$('#auth-form').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;const f=new FormData(e.currentTarget);try{if(reset){await authModule.resetPassword(f.get('email'));toast('If this account exists, a reset email will arrive.');}else if(signup){await authModule.signup(f.get('name'),f.get('email'),f.get('password'));toast('Check your email for verification.');context.go('/');}else{await authModule.login(f.get('email'),f.get('password'));context.go(isPrimaryEmail(authModule.session.user)?'/admin':'/');}}catch(error){console.error(error);$('#auth-error').textContent=friendly(error);}finally{b.disabled=false;}};if($('#google'))$('#google').onclick=action(async()=>{await authModule.googleLogin();context.go(isPrimaryEmail(authModule.session.user)?'/admin':'/');});}
-async function search(root,params){const {searchPage}=await __load("services/content.js");root.innerHTML=`<h1>Search your syllabus</h1><p class="muted">Nepali and English keyword search · exact question ID supported</p><form id="search-form" class="filters"><label>Search<input name="term" placeholder="नेपाल, constitution, question ID" value="${esc(params.get('q')||'')}"></label>${select('Level','level',[['','All'],[1,'L1'],[2,'L2'],[3,'L3']])}${select('Importance','importance',[['','All'],['high','High'],['medium','Medium'],['low','Low']])}<button class="primary">Search</button></form><div id="search-results"></div>`;let previous=[],cursor=null;async function run(next=null){const f=new FormData($('#search-form')),term=f.get('term').trim();if(!term)return;const out=$('#search-results');out.innerHTML=skeleton();const filters=[];if(f.get('level'))filters.push(['level','==',Number(f.get('level'))]);if(f.get('importance'))filters.push(['importance','==',f.get('importance')]);const direct=await dbModule.get('questions/'+term.replaceAll('/','_'));let p=direct&&direct.status==='published'?{items:[{entityId:direct.id,entityType:'questions',title:direct.questionText,topicId:direct.topicId}],hasNext:false}:await searchPage(term,filters,next);const ts=tokens(term);const rows=p.items.filter(x=>ts.every(t=>tokens(x.title+' '+x.snippet+' '+(x.tokens||[]).join(' ')).includes(t))||x.entityId===term);out.innerHTML=rows.length?rows.map(x=>`<a class="card" style="display:block;margin-bottom:12px" href="#${x.entityType==='questions'?'/study/'+encodeURIComponent(x.topicId)+'?q='+encodeURIComponent(x.entityId):x.entityType==='materials'?'/materials/'+encodeURIComponent(x.entityId):x.entityType==='notes'?'/notes/'+encodeURIComponent(x.chapterId):'/'+(x.entityType==='currentAffairs'?'current-affairs':'formulas')}"><span class="badge">${esc(x.entityType)}</span><h3>${highlight(x.title,term)}</h3></a>`).join(''):empty(p.hasNext?'No matches in this candidate page. Continue to the next page.':'No matching content.');pager(out,{hasNext:p.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(next);return run(p.cursor);},onPrev:()=>run(previous.pop())});}$('#search-form').onsubmit=action(async e=>{e.preventDefault();previous=[];await run();});$('[name=term]').oninput=debounce(()=>run().catch(showError));if(params.get('q'))await run();}
-function highlight(text,term){const parts=String(text||'').split(new RegExp('('+term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'));return parts.map(p=>p.toLowerCase()===term.toLowerCase()?'<mark>'+esc(p)+'</mark>':esc(p)).join('');}
-window.addEventListener('hashchange',()=>{route().catch(showError);});window.addEventListener('sajilo-signed-out',()=>{leaveGuard=null;route().catch(showError);});window.addEventListener('online',()=>{if($('#network'))$('#network').textContent='Online';toast('Connection restored.');});window.addEventListener('offline',()=>{if($('#network'))$('#network').textContent='Offline · cached reading';toast('Offline: cached reading and local test recovery are available.');});window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;window.sajiloInstall=async()=>{await installPrompt.prompt();installPrompt=null;};});
-observeLanguage();document.documentElement.dataset.theme=localStorage.getItem('sajilo-theme')||'light';document.documentElement.style.setProperty('--reader',(localStorage.getItem('sajilo-font')||18)+'px');
-try{[authModule,dbModule]=await Promise.all([__load("auth.js"),__load("services/db.js")]);await authModule.initAuth(error=>{if(error){shell('/');renderError($('#main'),error,()=>location.reload());return;}return route();});}catch(e){shell('/');renderError($('#main'),e,()=>location.reload());}
-
-if('serviceWorker' in navigator){const scope=new URL('./',location.href).href;navigator.serviceWorker.getRegistrations().then(async registrations=>{for(const reg of registrations){const script=reg.active?.scriptURL||reg.waiting?.scriptURL||reg.installing?.scriptURL;if(reg.scope===scope&&script===new URL('sw.js',scope).href)await reg.unregister();}}).catch(error=>console.warn('Previous app worker could not be retired.',error));}
-
-return {context};
-},
-"auth.js":async()=>{
-const {auth}=await __load("firebase.js");
-const {onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,GoogleAuthProvider,signInWithPopup,signOut,setPersistence,browserLocalPersistence,updateProfile,reload}=await __external("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js");
-const {get,save,cacheUser,cache,serverTimestamp}=await __load("services/db.js");
-const {fail}=await __load("utils.js");
-const {permissions,isPrimaryEmail,isPrimaryAdmin}=await __load("services/access.js");
-const session={user:null,profile:null,role:null,access:null,issues:[],ready:false};
-const canAdmin=()=>permissions(session.user,session.role).admin;
-const canEdit=()=>permissions(session.user,session.role).edit;
-const canManage=()=>permissions(session.user,session.role).manage;
-const canDelegate=()=>permissions(session.user,session.role).delegate;
-let listener=null,authGeneration=0;
-function deadline(p,ms){return new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(Object.assign(new Error('Account connection timed out'),{code:'deadline-exceeded'})),ms);p.then(v=>{clearTimeout(t);resolve(v);},e=>{clearTimeout(t);reject(e);});});}
-async function refreshSession(user=auth.currentUser){const generation=++authGeneration;session.ready=false;session.user=user;session.role=isPrimaryAdmin(user)?{role:'owner',enabled:true,source:'verified-owner-email'}:null;session.access=null;session.issues=[];session.loadingProfile=!!user;cacheUser(user?.uid);if(!user){session.profile=null;session.ready=true;return;}
- const defaults={displayName:user.displayName||user.email?.split('@')[0]||'Student',email:user.email||'',dailyQuestionGoal:20,dailyMinutesGoal:30,targetExamId:'',preferences:{theme:'light',language:'en'}};
- session.profile=defaults;session.ready=true;
- const paths=[`users/${user.uid}`,`adminRoles/${user.uid}`,`users/${user.uid}/access/current`];const results=await Promise.allSettled(paths.map(path=>deadline(get(path,{fresh:true}),10000)));
- if(generation!==authGeneration)return;
- for(let i=0;i<results.length;i++)if(results[i].status==='rejected'){console.error('Account setup read failed',paths[i],results[i].reason);session.issues.push({path:paths[i],code:results[i].reason?.code||'read-failed'});}
- const [profile,role,access]=results.map(r=>r.status==='fulfilled'?r.value:null);
- if(profile)Object.assign(session.profile,{...defaults,...profile,preferences:{...defaults.preferences,...profile.preferences}});
- if(!isPrimaryAdmin(user))session.role=role;
- session.access=access;
- if(results[0].status==='fulfilled'&&navigator.onLine){try{if(!profile)await deadline(save(paths[0],{...defaults,createdAt:serverTimestamp()}),10000);else if(user.emailVerified){const patch={};for(const key of ['displayName','dailyQuestionGoal','dailyMinutesGoal'])if(profile[key]===undefined)patch[key]=defaults[key];if(profile.preferences===undefined)patch.preferences=defaults.preferences;if(Object.keys(patch).length)await deadline(save(paths[0],patch),10000);}}catch(error){console.error('Profile provisioning failed',error);session.issues.push({path:paths[0],code:error.code||'profile-save-failed'});}}
- session.loadingProfile=false;session.ready=true;
-}
-async function initAuth(callback){listener=callback;try{await setPersistence(auth,browserLocalPersistence);}catch(error){console.warn('Persistent sign-in unavailable; using current session.',error);}return onAuthStateChanged(auth,async user=>{try{const pending=refreshSession(user);await callback();await pending;if(auth.currentUser?.uid!==user?.uid)return;if(!location.hash.startsWith('#/profile'))await callback();else window.dispatchEvent(new Event('sajilo-account-ready'));}catch(error){await callback(error);}});}
-async function login(email,password){await signInWithEmailAndPassword(auth,email,password);}
-async function signup(name,email,password){if(password.length<8)fail('Use at least 8 characters for your password.');const settings=await get('appSettings/policy');if(settings?.registrationOpen===false)fail('Registration is currently closed.');const {user}=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(user,{displayName:name});await sendEmailVerification(user);}
-async function googleLogin(){await signInWithPopup(auth,new GoogleAuthProvider());}
-const resetPassword=email=>sendPasswordResetEmail(auth,email);
-const verifyEmail=()=>sendEmailVerification(auth.currentUser);
-async function refreshUser(){if(!auth.currentUser)fail('Sign in to refresh your account.');await reload(auth.currentUser);await auth.currentUser.getIdToken(true);await refreshSession(auth.currentUser);}
-async function logout(){
- await signOut(auth);
- ++authGeneration;session.user=null;session.profile=null;session.role=null;session.access=null;session.issues=[];session.ready=true;cacheUser(null);
- location.hash='/login';
- cache.clearPrivate().catch(error=>console.warn('Signed out; local cache cleanup failed.',error));
- window.dispatchEvent(new Event('sajilo-signed-out'));
-}
-
-return {session,canAdmin,canEdit,canManage,canDelegate,refreshSession,initAuth,login,signup,googleLogin,resetPassword,verifyEmail,refreshUser,logout};
-},
-"firebase.js":async()=>{
-const { initializeApp }=await __external("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js");
-const { getAuth }=await __external("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js");
-const { getFirestore }=await __external("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js");
-const firebaseConfig={apiKey:'AIzaSyDK1wwahwoJxNAH_Iats2wrSMUA42jVhSI',authDomain:'loksewa-2083.firebaseapp.com',projectId:'loksewa-2083',storageBucket:'loksewa-2083.firebasestorage.app',messagingSenderId:'484441818228',appId:'1:484441818228:web:fb43d456131cd40ec1fd21',measurementId:'G-D5RTD5R7B4'};
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
-
-
-return {app,auth,db};
-},
-"services/access.js":async()=>{
-const PRIMARY_ADMIN_EMAIL='deepakrajpant978@gmail.com';
-const isPrimaryEmail=user=>user?.email===PRIMARY_ADMIN_EMAIL;
-const isPrimaryAdmin=user=>isPrimaryEmail(user)&&user.emailVerified===true;
-function permissions(user,role){const verified=user?.emailVerified===true,primary=isPrimaryAdmin(user),enabled=verified&&role?.enabled===true;return {primary,admin:primary||!!(enabled&&['owner','admin','editor','support'].includes(role.role)),edit:primary||!!(enabled&&['owner','admin','editor'].includes(role.role)),manage:primary||!!(enabled&&['owner','admin'].includes(role.role)),delegate:primary};}
-function navigationState(hash=''){const raw=hash.replace(/^#/,'')||'/',[rawPath,qs='']=raw.split('?');const path=('/'+rawPath.replace(/^\/+|\/+$/g,'')).replace(/\/{2,}/g,'/');const group=path.startsWith('/admin')?'admin':/^\/(my-subjects|subjects|chapters|topics|materials|study|notes|onboarding)(\/|$)/.test(path)?'subjects':/^\/(revision|exam-mode)(\/|$)/.test(path)?'revision':/^\/(tests|results)(\/|$)/.test(path)?'tests':path==='/saved'?'saved':path==='/'?'home':null;return {path,params:new URLSearchParams(qs),group};}
-function routeModule(path){const routes={'/':'student/learning','/my-subjects':'student/learning','/subjects/add':'student/learning','/saved':'student/learning','/admin':'admin/overview','/admin/content':'admin/content','/admin/materials':'admin/materials','/admin/mappings':'admin/materials','/admin/import':'admin/import-export','/admin/users':'admin/users','/admin/settings':'admin/users','/admin/setup':'admin/setup','/revision':'student/review','/exam-mode':'student/review','/tests':'student/tests','/progress':'student/tests','/profile':'student/dashboard','/planner':'student/dashboard','/current-affairs':'student/dashboard','/formulas':'student/dashboard','/notifications':'student/dashboard'};if(Object.hasOwn(routes,path))return routes[path];if(/^\/(subjects|chapters|topics|materials)\/[^/]+$/.test(path)||/^\/onboarding\/(exams|subjects)$/.test(path))return 'student/learning';if(/^\/(study|notes)\/[^/]+$/.test(path))return 'student/study';if(/^\/(tests|results)\/[^/]+$/.test(path))return 'student/tests';return null;}
-
-return {PRIMARY_ADMIN_EMAIL,isPrimaryEmail,isPrimaryAdmin,permissions,navigationState,routeModule};
-},
-"services/content.js":async()=>{
-const {page,get,allPages,audit,doc,db,runTransaction,serverTimestamp}=await __load("services/db.js");
-const {tokens,uid,validateQuestion,fail,shuffle,asDate,clamp}=await __load("utils.js");
-const published=[['status','==','published']];
-async function hierarchy(kind,filters=[]){return page(kind,{filters:[...published,...filters],sort:'sortOrder',direction:'asc'});}
-const questionPage=(filters=[],cursor=null)=>page('questions',{filters:[...published,...filters],sort:'__name__',direction:'asc',cursor});
-async function solution(q){const data=await get(`questions/${q.id}/solutions/${q.solutionVersion||q.version||1}`);if(!data)return null;const {id,...value}=data;return value;}
-async function writeContent(kind,id,data,actor,{expectedVersion=null,mode='upsert'}={}){const errors=kind==='questions'?validateQuestion(data):kind==='materials'?(await __load("services/learning.js")).validateMaterial(data):[];if(errors.length)fail(errors.join('. '));const key=id||uid();await runTransaction(db,async tx=>{const ref=doc(db,kind,key),snap=await tx.get(ref),old=snap.exists()?snap.data():null;if(mode==='add'&&old)fail('Duplicate ID. Nothing was overwritten.');if(mode==='update'&&!old)fail('The requested ID does not exist.');if(expectedVersion!==null&&(old?.version||0)!==expectedVersion)fail('Content changed since preview. Reload before saving.');const version=(old?.version||0)+1;const now=serverTimestamp();const clean={...data};delete clean.id;const answer={correctOption:clean.correctOption,shortAnswer:clean.shortAnswer||'',explanationHtml:clean.explanationHtml||clean.explanation||'',memoryTrick:clean.memoryTrick||'',questionVersion:version};for(const k of ['correctOption','shortAnswer','explanationHtml','explanation','memoryTrick'])if(kind==='questions')delete clean[k];const payload={...clean,version,updatedAt:now,updatedBy:actor,createdAt:old?.createdAt||now,createdBy:old?.createdBy||actor};if(old?.status==='published'&&clean.status==='draft'){const draft={snapshot:{...payload,...(kind==='questions'?answer:{})},actorUid:actor,recordedAt:now,updatedAt:now};tx.set(doc(db,kind,key,'drafts','current'),draft);tx.set(doc(db,kind,key,'revisions','draft-'+uid()),draft);tx.set(doc(db,'adminAuditLogs',uid()),{actorUid:actor,action:'save-draft',entityType:kind,entityId:key,recordedAt:now});return;}tx.delete(doc(db,kind,key,'drafts','current'));if(kind==='questions'){payload.solutionVersion=version;payload.randomKey=old?.randomKey??Math.random();tx.set(doc(db,kind,key,'solutions',String(version)),answer);}
- tx.set(ref,payload);tx.set(doc(db,kind,key,'revisions',String(version)),{snapshot:{...payload,...(kind==='questions'?answer:{})},actorUid:actor,recordedAt:now});tx.set(doc(db,'adminAuditLogs',uid()),{actorUid:actor,action:old?'update':'create',entityType:kind,entityId:key,recordedAt:now});
- if(['questions','notes','materials','currentAffairs','formulaSheets'].includes(kind))tx.set(doc(db,'searchEntries',kind+'-'+key),{entityId:key,entityType:kind,title:clean.questionText||clean.title||'',snippet:(clean.questionText||clean.title||'').slice(0,240),tokens:tokens([clean.questionText,clean.title,clean.source?.title,answer.shortAnswer,...(clean.tags||[])].join(' ')),examId:clean.examId||'',subjectId:clean.subjectId||'',chapterId:clean.chapterId||'',topicId:clean.topicId||'',level:clean.level||0,importance:clean.importance||'low',access:clean.access||'free',status:clean.status,updatedAt:now});
- });return key;}
-async function setStatus(kind,item,status,actor){const data={...item,status,previousStatus:status==='deleted'?item.status:item.previousStatus||null};if(kind==='questions'){const s=await solution(item);if(!s)fail('Question solution is missing.');Object.assign(data,s);}return writeContent(kind,item.id,data,actor,{expectedVersion:item.version||0});}
-function recommendationScore(q,p={},s={}){const importance={low:.2,medium:.6,high:1}[q.importance]||.2;const weakness=p.attempts?1-p.correct/p.attempts:.5;const ago=p.lastReviewedAt?(Date.now()-asDate(p.lastReviewedAt))/86400000:30;const overdue=s.nextReviewAt?clamp((Date.now()-asDate(s.nextReviewAt))/86400000/7,0,1):0;return .3*importance+.25*weakness+.2*overdue+.1*clamp(ago/30,0,1)+.15*(p.masteryState==='mastered'?0:1);}
-function weightedSample(items,count,weight,rng=Math.random){return items.map(q=>({q,key:Math.log(Math.max(rng(),1e-12))/Math.max(.001,weight(q))})).sort((a,b)=>b.key-a.key).slice(0,count).map(x=>x.q);}
-function mixQuestions(items,{count=20,mix=[40,40,20],progress={},schedules={},excludeRecentDays=2}={}){const recentCut=Date.now()-excludeRecentDays*86400000;const eligible=items.filter(q=>!progress[q.id]?.lastAttemptAt||asDate(progress[q.id].lastAttemptAt).getTime()<recentCut);const source=eligible.length>=count?eligible:items;const sum=mix.reduce((a,b)=>a+b,0);if(sum<=0)fail('Difficulty mix must total more than zero.');const targets=mix.map(x=>Math.floor(count*x/sum));while(targets.reduce((a,b)=>a+b,0)<count)targets[targets.indexOf(Math.min(...targets))]++;let selected=[];for(let l=1;l<=3;l++)selected.push(...weightedSample(source.filter(q=>q.level===l),targets[l-1],q=>recommendationScore(q,progress[q.id],schedules[q.id])));const ids=new Set(selected.map(q=>q.id));selected.push(...weightedSample(source.filter(q=>!ids.has(q.id)),Math.max(0,count-selected.length),q=>recommendationScore(q,progress[q.id],schedules[q.id])));return {questions:shuffle(selected),shortage:Math.max(0,count-selected.length),recentFallback:source!==eligible,actualMix:[1,2,3].map(l=>selected.filter(q=>q.level===l).length)};}
-async function candidates(filters=[],max=160,pivot=Math.random()){let items=[],cursor=null;const p=await page('questions',{filters:[...published,...filters,['randomKey','>=',pivot]],sort:'randomKey',direction:'asc',size:20});items.push(...p.items);cursor=p.cursor;while(items.length<max&&cursor&&p.hasNext){const n=await page('questions',{filters:[...published,...filters,['randomKey','>=',pivot]],sort:'randomKey',direction:'asc',cursor,size:20});items.push(...n.items);cursor=n.hasNext?n.cursor:null;}if(items.length<max){let cur=null;do{const n=await page('questions',{filters:[...published,...filters,['randomKey','<',pivot]],sort:'randomKey',direction:'asc',cursor:cur,size:20});items.push(...n.items);cur=n.hasNext?n.cursor:null;if(!cur)break;}while(items.length<max);}return [...new Map(items.slice(0,max).map(q=>[q.id,q])).values()];}
-async function searchPage(term,filters=[],cursor=null){const ts=tokens(term);if(!ts.length)return {items:[],cursor:null,hasNext:false};return page('searchEntries',{filters:[...published,...filters,['tokens','array-contains',ts[0]]],cursor});}
-
-return {published,hierarchy,questionPage,solution,writeContent,setStatus,recommendationScore,weightedSample,mixQuestions,candidates,searchPage};
-},
-"services/db.js":async()=>{
-const {db}=await __load("firebase.js");
-const {collection,collectionGroup,doc,getDoc,getDocs,query,where,orderBy,limit,startAfter,setDoc,updateDoc,deleteDoc,writeBatch,runTransaction,serverTimestamp,Timestamp,getCountFromServer}=await __external("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js");
-const {requireOnline,sleep,fail,uid}=await __load("utils.js");
-
-let namespace='public',storePromise,unrestricted=false;const pending=new Map();
-const restrictedCollections=new Set(['materials','questions','notes','testSets','mockTests','searchEntries','currentAffairs','formulaSheets']);
-function setEntitlement(value){unrestricted=!!value;}
-function accessible(path,filters){return !unrestricted&&restrictedCollections.has(path)&&filters.some(f=>f[0]==='status'&&f[2]==='published')&&!filters.some(f=>f[0]==='access')?[...filters,['access','==','free']]:filters;}
-function cacheUser(id){namespace=id||'public';}
-function openCache(){return storePromise??=new Promise((resolve,reject)=>{let done=false;const timer=setTimeout(()=>{done=true;reject(new Error('Local cache opening timed out'));},1500);const req=indexedDB.open('sajilo-gk',1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('records'))req.result.createObjectStore('records');};req.onsuccess=()=>{clearTimeout(timer);if(done)req.result.close();else resolve(req.result);};req.onerror=()=>{clearTimeout(timer);reject(req.error);};req.onblocked=()=>{clearTimeout(timer);done=true;reject(new Error('Local cache is blocked'));};});}
-const cache={async get(key,scope=namespace){const db=await openCache();if(scope!==namespace)return undefined;return new Promise((res,rej)=>{const req=db.transaction('records').objectStore('records').get(scope+':'+key);req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});},async put(key,value,scope=namespace){const db=await openCache();if(scope!==namespace)return;return new Promise((res,rej)=>{const tx=db.transaction('records','readwrite');tx.objectStore('records').put(value,scope+':'+key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});},async clearPrivate(){const db=await openCache();return new Promise((res,rej)=>{const tx=db.transaction('records','readwrite'),req=tx.objectStore('records').openCursor();req.onsuccess=()=>{const c=req.result;if(c){if(!String(c.key).startsWith('public:'))c.delete();c.continue();}};tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}};
-async function cacheSafe(fn){let timer;try{return await Promise.race([fn(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Local cache transaction timed out')),1500);})]);}catch(e){console.warn('Local cache unavailable',e);return undefined;}finally{clearTimeout(timer);}}
-function withDeadline(promise,ms=12000){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Object.assign(new Error('Network operation timed out'),{code:'deadline-exceeded'})),ms);Promise.resolve(promise).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});});}
-async function retry(fn){for(let n=0;;n++){try{return await withDeadline(fn());}catch(e){if(n>=2||!['unavailable','deadline-exceeded','aborted'].some(c=>e.code?.includes(c)))throw e;await sleep(300*2**n+Math.random()*100);}}}
-async function get(path,{fresh=false,ttl=60000}={}){const scope=namespace,key='doc:'+path,pendingKey=scope+':'+key;const old=await cacheSafe(()=>cache.get(key,scope));if(old&&(!navigator.onLine||(!fresh&&Date.now()-old.at<ttl)))return old.value;if(!navigator.onLine)fail('This content is not cached. Reconnect to open it.');if(pending.has(pendingKey))return pending.get(pendingKey);const promise=retry(()=>getDoc(doc(db,path))).then(async snap=>{const value=snap.exists()?{id:snap.id,...snap.data()}:null;await cacheSafe(()=>cache.put(key,{at:Date.now(),value},scope));return value;}).finally(()=>pending.delete(pendingKey));pending.set(pendingKey,promise);return promise;}
-async function page(path,{filters=[],sort='updatedAt',direction='desc',cursor=null,size=20,group=false}={}){const scope=namespace;filters=accessible(path,filters);const args=[...filters.map(f=>where(...f)),orderBy(sort,direction)];if(sort!=='__name__')args.push(orderBy('__name__',direction));if(cursor)args.push(startAfter(cursor));args.push(limit(Math.min(20,size)));const key=JSON.stringify({path,filters,sort,direction,cursor:cursor?.id||null,size,group});const old=await cacheSafe(()=>cache.get(key,scope));if(!navigator.onLine){if(old)return {...old,cursor:null,hasNext:false,cached:true};fail('This page is not cached. Reconnect to browse.');}const q=query(group?collectionGroup(db,path):collection(db,path),...args);const snap=await retry(()=>getDocs(q));const result={items:snap.docs.map(d=>({id:d.id,...d.data()})),cursor:snap.docs.at(-1)||null,hasNext:snap.size===Math.min(20,size),cached:false};await cacheSafe(()=>cache.put(key,{items:result.items,hasNext:false},scope));return result;}
-async function count(path,filters=[],group=false){requireOnline();filters=accessible(path,filters);const q=query(group?collectionGroup(db,path):collection(db,path),...filters.map(f=>where(...f)));return (await retry(()=>getCountFromServer(q))).data().count;}
-async function save(path,data,{merge=true}={}){requireOnline();await retry(()=>setDoc(doc(db,path),{...data,updatedAt:serverTimestamp()}, {merge}));await cacheSafe(()=>cache.put('doc:'+path,{at:0,value:null}));}
-async function create(path,data){requireOnline();await runTransaction(db,async tx=>{const ref=doc(db,path);if((await tx.get(ref)).exists())fail('This ID already exists. Nothing was overwritten.');tx.set(ref,{...data,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});});}
-async function remove(path){requireOnline();await deleteDoc(doc(db,path));await cacheSafe(()=>cache.put('doc:'+path,{at:0,value:null}));}
-async function audit(actor,action,entityType,entityId,changes){requireOnline();const batch=writeBatch(db);batch.set(doc(db,'adminAuditLogs',uid()),{actorUid:actor,action,entityType,entityId,recordedAt:serverTimestamp()});for(const change of changes){const ref=doc(db,change.path);if(change.delete)batch.delete(ref);else batch.set(ref,{...change.data,updatedAt:serverTimestamp()},{merge:change.merge!==false});}await batch.commit();}
-async function allPages(path,options={},onPage=()=>{}){let cursor=null,total=[];do{const p=await page(path,{...options,cursor});total.push(...p.items);onPage(total.length);if(p.cached||!p.hasNext)break;cursor=p.cursor;}while(cursor);return total;}
-
-return {setEntitlement,cacheUser,cache,withDeadline,retry,get,page,count,save,create,remove,audit,allPages,doc,collection,where,orderBy,limit,startAfter,query,serverTimestamp,Timestamp,runTransaction,writeBatch,db};
-},
-"services/exams.js":async()=>{
-const {db,doc,writeBatch,runTransaction,serverTimestamp,Timestamp,get,page,cache,save,withDeadline}=await __load("services/db.js");
-const {uid,fail,requireOnline,pct,asDate}=await __load("utils.js");
-const {solution}=await __load("services/content.js");
-function score(items,solutions,config={}){let correct=0,incorrect=0,unattempted=0,obtained=0,maximum=0;const breakdown={subject:{},topic:{},level:{}};for(const item of items){const marks=Number(item.marks??config.marksPerQuestion??1),s=solutions[item.questionId],selected=item.selectedOption;maximum+=marks;const answered=Number.isInteger(selected);if(!s)fail('A versioned answer is missing. Contact the administrator.');const right=answered&&selected===s.correctOption;if(!answered)unattempted++;else if(right){correct++;obtained+=marks;}else{incorrect++;obtained-=Number(config.negativeMarks||0);}for(const [group,key] of [['subject',item.promptSnapshot.subjectId],['topic',item.promptSnapshot.topicId],['level',item.promptSnapshot.level]]){const b=breakdown[group][key]??={total:0,correct:0,attempted:0};b.total++;b.correct+=right?1:0;b.attempted+=answered?1:0;}}if(config.targetFullMarks){obtained=maximum?obtained/maximum*config.targetFullMarks:0;maximum=config.targetFullMarks;}const percentage=maximum?obtained/maximum*100:0;return {correct,incorrect,unattempted,obtained:Number(obtained.toFixed(2)),maximum,percentage:Number(percentage.toFixed(2)),accuracy:pct(correct,correct+incorrect),passed:percentage>=(config.passPercentage??60),breakdown};}
-async function createAttempt(user,questions,config={}){requireOnline();if(!questions.length)fail('No eligible questions are available.');const id=uid(),base=`users/${user}/testAttempts/${id}`;const attempt={testId:config.testId||null,testVersion:config.testVersion||null,sourceAttemptId:config.sourceAttemptId||null,title:config.title||'Smart Practice',kind:config.kind||'mixed',examId:questions[0].examId,status:'preparing',durationSeconds:config.durationSeconds||questions.length*60,questionCount:questions.length,scoringSnapshot:{marksPerQuestion:1,negativeMarks:0,passPercentage:60,...config.scoring},createdAt:serverTimestamp(),updatedAt:serverTimestamp(),integrity:'client_practice',scope:config.scope||{},scopeKey:JSON.stringify({scope:config.scope||{},testId:config.testId||null,questionCount:questions.length,scoring:config.scoring||{}})};await save(base,attempt);const items=questions.map((q,i)=>({id:String(i).padStart(4,'0'),order:i,questionId:q.id,questionVersion:q.solutionVersion||q.version||1,promptSnapshot:{questionText:q.questionText,options:q.options,examId:q.examId,subjectId:q.subjectId,chapterId:q.chapterId,topicId:q.topicId,level:q.level,importance:q.importance,imageUrl:q.imageUrl||'',source:q.source||{}},marks:q.marks||attempt.scoringSnapshot.marksPerQuestion,selectedOption:null,markedForReview:false,timeSpentSeconds:0,createdAt:serverTimestamp(),updatedAt:serverTimestamp()}));for(let start=0;start<items.length;start+=100){const batch=writeBatch(db);for(const item of items.slice(start,start+100))batch.set(doc(db,base,'items',item.id),item);await batch.commit();}const now=new Date(),expires=new Date(now.getTime()+attempt.durationSeconds*1000);await save(base,{status:'active',startedAt:Timestamp.fromDate(now),expiresAt:Timestamp.fromDate(expires),lastSavedAt:serverTimestamp()});return id;}
-async function persistDraft(user,id,items){
- const draft={savedAt:Date.now(),items:items.map(({id,selectedOption,markedForReview})=>({id,selectedOption,markedForReview:!!markedForReview}))};
- let fallback=false;try{localStorage.setItem('sajilo:attempt:'+user+':'+id,JSON.stringify(draft));fallback=true;}catch(error){console.warn('Browser draft storage unavailable',error);}
- const pending=withDeadline(cache.put('attempt:'+id,draft,user),1500);
- if(fallback){pending.catch(error=>console.warn('IndexedDB draft unavailable; browser draft retained',error));return draft;}
- await pending;return draft;
-}
-async function loadAttempt(user,id){const base=`users/${user}/testAttempts/${id}`;const attempt=await get(base,{fresh:true});if(!attempt)fail('Attempt not found.');const items=[];let cursor=null;do{const p=await page(base+'/items',{sort:'order',direction:'asc',cursor});items.push(...p.items);cursor=p.hasNext?p.cursor:null;}while(cursor);if(attempt.status==='active'){
- let local=null;try{local=JSON.parse(localStorage.getItem('sajilo:attempt:'+user+':'+id)||'null');}catch(error){console.warn('Browser draft could not be read',error);}
- try{const cached=await withDeadline(cache.get('attempt:'+id,user),1500);if(cached?.savedAt>(local?.savedAt||0))local=cached;}catch(error){console.warn('IndexedDB recovery unavailable',error);}
- const serverTime=attempt.lastSavedAt?asDate(attempt.lastSavedAt).getTime():0;
- if(local?.savedAt>serverTime&&Array.isArray(local.items))for(const item of items){const saved=local.items.find(x=>x.id===item.id);if(saved&&(saved.selectedOption===null||(Number.isInteger(saved.selectedOption)&&saved.selectedOption>=0&&saved.selectedOption<item.promptSnapshot.options.length)))Object.assign(item,{selectedOption:saved.selectedOption,markedForReview:!!saved.markedForReview});}
-}return {attempt,items};}
-async function saveAnswers(user,id,items){try{await persistDraft(user,id,items);}catch(error){if(!navigator.onLine)fail('This browser could not save your offline answers. Reconnect before continuing.');console.warn('Local draft failed; saving directly to your account',error);}if(!navigator.onLine)return false;const base=`users/${user}/testAttempts/${id}`;const batch=writeBatch(db);for(const item of items)batch.update(doc(db,base,'items',item.id),{selectedOption:item.selectedOption??null,markedForReview:!!item.markedForReview,timeSpentSeconds:item.timeSpentSeconds||0,updatedAt:serverTimestamp()});batch.update(doc(db,base),{lastSavedAt:serverTimestamp(),updatedAt:serverTimestamp()});await withDeadline(batch.commit());return true;}
-async function persistGradingSnapshots(user,id,items,solutions){
- const pending=items.filter(item=>!item.solutionSnapshot);
- for(let offset=0;offset<pending.length;offset+=5){const chunk=pending.slice(offset,offset+5),batch=writeBatch(db);const snapshots=[];for(const item of chunk){const answer=solutions[item.questionId];if(!answer)fail('A historical solution is unavailable. Contact the administrator.');const snapshot={correctOption:answer.correctOption,explanationHtml:answer.explanationHtml||'',shortAnswer:answer.shortAnswer||'',memoryTrick:answer.memoryTrick||'',questionVersion:item.questionVersion};snapshots.push(snapshot);batch.update(doc(db,`users/${user}/testAttempts/${id}/items/${item.id}`),{solutionSnapshot:snapshot,updatedAt:serverTimestamp()});}await withDeadline(batch.commit());chunk.forEach((item,index)=>item.solutionSnapshot=snapshots[index]);}
-}
-async function submitAttempt(user,id,items){requireOnline();const path=`users/${user}/testAttempts/${id}`;let attempt=await get(path,{fresh:true});if(attempt.status==='submitted'&&attempt.result)return attempt.result;if(attempt.status==='active')await saveAnswers(user,id,items);
- // Submission intent unlocks review in the normal UI. This is not trusted grading.
- if(attempt.status==='active')await save(path,{status:'submitted',submittedAt:serverTimestamp()});
- const previousItems=attempt.sourceAttemptId?(await loadAttempt(user,attempt.sourceAttemptId)).items:[];const solutions={};for(let i=0;i<items.length;i+=10)await Promise.all(items.slice(i,i+10).map(async item=>{solutions[item.questionId]=item.solutionSnapshot||previousItems.find(old=>old.questionId===item.questionId&&old.questionVersion===item.questionVersion)?.solutionSnapshot||await solution({id:item.questionId,solutionVersion:item.questionVersion});}));await persistGradingSnapshots(user,id,items,solutions);const result=score(items,solutions,attempt.scoringSnapshot);result.timeTakenSeconds=Math.min(attempt.durationSeconds,Math.max(0,Math.round((Date.now()-asDate(attempt.startedAt))/1000)));await runTransaction(db,async tx=>{const ref=doc(db,path),snap=await tx.get(ref);if(snap.data().result)return;tx.update(ref,{result,updatedAt:serverTimestamp()});});return result;}
-
-return {score,createAttempt,persistDraft,loadAttempt,saveAnswers,persistGradingSnapshots,submitAttempt};
-},
-"services/learning.js":async()=>{
-const {get,page,count,save,remove,allPages,cache,serverTimestamp,db,doc,writeBatch}=await __load("services/db.js");
-const {dayKey,pct,fail,uid,requireOnline,nepalMidnight}=await __load("utils.js");
-const {sm2,record}=await __load("services/progress.js");
-const memo=new Map();
-const levels=[{id:1,title:'Basic',detail:'Fundamentals and essential facts'},{id:2,title:'Medium',detail:'Comparisons and relationships'},{id:3,title:'Advanced',detail:'Detailed recall and exceptions'}];
-const published=[['status','==','published']];
-function canonicalSubjects(subjects,examIds){return [...new Map(subjects.filter(s=>(s.examIds||[s.examId]).some(id=>examIds.includes(id))).map(s=>[s.id,s])).values()];}
-async function catalog(){const hit=memo.get('catalog');if(hit&&Date.now()-hit.at<60000)return hit.value;const [exams,subjects]=await Promise.all([allPages('exams',{filters:published,sort:'sortOrder',direction:'asc'}),allPages('subjects',{filters:published,sort:'sortOrder',direction:'asc'})]);const value={exams,subjects};memo.set('catalog',{at:Date.now(),value});return value;}
-async function selectionRows(user){
- const rows=await allPages(`users/${user}/selectedSubjects`);
- const profile=await get('users/'+user,{fresh:true});
- if(profile?.subjectSelectionVersion===1)return rows;
- const legacy=await allPages(`users/${user}/subjects`);
- const existing=new Set(rows.map(row=>row.id));
- const batch=writeBatch(db);
- for(const row of legacy){if(existing.has(row.id))continue;const data={subjectId:row.subjectId||row.id,examIds:row.examIds||[],addedAt:row.addedAt||serverTimestamp(),updatedAt:serverTimestamp()};batch.set(doc(db,`users/${user}/selectedSubjects/${row.id}`),data);rows.push({id:row.id,...data});}
- batch.set(doc(db,'users/'+user),{subjectSelectionVersion:1,updatedAt:serverTimestamp()},{merge:true});
- await batch.commit();return rows;
-}
-async function selectedSubjects(user){const rows=await selectionRows(user),cat=await catalog();return rows.map(row=>({...cat.subjects.find(s=>s.id===row.id),selection:row})).filter(s=>s.id&&s.status==='published');}
-async function saveSelection(user,examIds,subjectIds){requireOnline();if(!examIds.length||examIds.length>10)fail('Select between 1 and 10 examinations.');if(!subjectIds.length||subjectIds.length>100)fail('Choose between 1 and 100 subjects.');const cat=await catalog(),allowed=canonicalSubjects(cat.subjects,examIds);if(subjectIds.some(id=>!allowed.some(s=>s.id===id)))fail('A chosen subject does not belong to your examinations.');const old=await selectionRows(user);const batch=writeBatch(db);for(const s of allowed.filter(s=>subjectIds.includes(s.id)))batch.set(doc(db,`users/${user}/selectedSubjects/${s.id}`),{subjectId:s.id,examIds:examIds.filter(e=>(s.examIds||[s.examId]).includes(e)),addedAt:serverTimestamp(),updatedAt:serverTimestamp()});for(const s of old.filter(s=>!subjectIds.includes(s.id)))batch.delete(doc(db,`users/${user}/selectedSubjects/${s.id}`));batch.update(doc(db,`users/${user}`),{subjectSelectionVersion:1,selectedExamIds:examIds,pendingExamIds:[],onboardingComplete:true,onboardingStep:'complete',targetExamId:examIds[0],updatedAt:serverTimestamp()});await batch.commit();memo.clear();}
-async function detachSubject(user,id){await selectionRows(user);await remove(`users/${user}/selectedSubjects/${id}`);memo.clear();}
-const scopeFilters=scope=>Object.entries(scope).filter(([k,v])=>['subjectId','chapterId','topicId','level'].includes(k)&&v!==''&&v!==null&&v!==undefined).map(([k,v])=>[k,'==',v]);
-function aggregateMetrics(rows){const totals=rows.reduce((a,r)=>{for(const k of ['materials','read','questions','assessed','mastered','attempts','correct'])a[k]+=r[k]||0;return a;},{materials:0,read:0,questions:0,assessed:0,mastered:0,attempts:0,correct:0});return {...totals,reading:totals.materials?pct(totals.read,totals.materials):null,mastery:totals.questions&&totals.assessed?pct(totals.mastered,totals.questions):null,coverage:totals.questions?pct(totals.assessed,totals.questions):null,accuracy:totals.attempts?pct(totals.correct,totals.attempts):null};}
-async function metrics(user,scope={}){const key=user+JSON.stringify(scope);const hit=memo.get(key);if(hit&&Date.now()-hit.at<60000)return hit.value;const filters=scopeFilters(scope);const [materials,questions,reads,progress]=await Promise.all([count('materials',[...published,...filters]),count('questions',[...published,...filters]),allPages(`users/${user}/materialProgress`,{filters:[...filters,['read','==',true]]}),allPages(`users/${user}/questionProgress`,{filters})]);let read=0,mastered=0,assessed=0,attempts=0,correct=0;for(let i=0;i<reads.length;i+=10){const values=await Promise.all(reads.slice(i,i+10).map(p=>accessibleGet('materials/'+p.id)));values.forEach((m,j)=>{if(m?.status==='published'&&m.version===reads[i+j].materialVersion)read++;});}for(let i=0;i<progress.length;i+=10){const values=await Promise.all(progress.slice(i,i+10).map(p=>accessibleGet('questions/'+p.id)));values.forEach((q,j)=>{const p=progress[i+j];if(!q||q.status!=='published')return;attempts+=p.attempts||0;correct+=p.correct||0;if(p.attempts>0)assessed++;if(p.masteryState==='mastered'&&p.questionVersion===q.version)mastered++;});}const value=aggregateMetrics([{materials,read,questions,mastered,assessed,attempts,correct}]);memo.set(key,{at:Date.now(),value});return value;}
-function invalidateMetrics(){memo.clear();}
-async function accessibleGet(path){try{return await get(path);}catch(e){if(e.code?.includes('permission-denied'))return null;throw e;}}
-const entityKey=(kind,id)=>kind+'-'+id;
-async function savedState(user,kind,id){return await get(`users/${user}/savedItems/${entityKey(kind,id)}`,{fresh:true})||{favourite:false,revision:false,personalImportant:false};}
-async function setSaved(user,kind,entity,flag,value){if(!['favourite','revision','personalImportant'].includes(flag))fail('Invalid saved-item action.');const key=entityKey(kind,entity.id);await save(`users/${user}/savedItems/${key}`,{entityType:kind,entityId:entity.id,title:entity.title||entity.questionText,subjectId:entity.subjectId,chapterId:entity.chapterId,topicId:entity.topicId,level:entity.level,importance:entity.importance||'medium',[flag]:!!value,createdAt:serverTimestamp()});if(kind==='question'&&flag==='favourite'){const {bookmark}=await __load("services/progress.js");await bookmark(user,entity,value);}if(flag==='revision'&&value){const scheduleId=kind==='question'?entity.id:'material-'+entity.id;const old=await get(`users/${user}/revisionSchedule/${scheduleId}`);if(!old)await save(`users/${user}/revisionSchedule/${scheduleId}`,{questionId:scheduleId,entityType:kind,entityId:entity.id,easeFactor:2.5,repetitions:0,intervalDays:1,lapses:0,nextReviewDate:dayKey(),nextReviewAt:nepalMidnight(dayKey()),createdAt:serverTimestamp()});}}
-async function markRead(user,material,value){await save(`users/${user}/materialProgress/${material.id}`,{materialId:material.id,materialVersion:material.version,subjectId:material.subjectId,chapterId:material.chapterId,topicId:material.topicId,level:material.level,read:!!value,readAt:value?serverTimestamp():null,lastOpenedAt:serverTimestamp(),createdAt:serverTimestamp()});invalidateMetrics();}
-async function rateEntity(user,kind,entity,rating,sessionId){if(kind==='question'){await record(user,entity,{type:'rating',rating,sessionId});return;}const id='material-'+entity.id,old=await get(`users/${user}/revisionSchedule/${id}`,{fresh:true})||{},next=sm2(old,rating);await save(`users/${user}/revisionSchedule/${id}`,{...next,questionId:id,entityType:'material',entityId:entity.id,lastReviewAt:serverTimestamp(),nextReviewAt:nepalMidnight(next.nextReviewDate),createdAt:old.createdAt||serverTimestamp()});}
-function validateMaterial(m){const errors=[];for(const k of ['title','subjectId','chapterId','topicId'])if(!String(m[k]||'').trim())errors.push(k+' is required');if(![1,2,3].includes(m.level))errors.push('Choose L1, L2 or L3');if(!['low','medium','high'].includes(m.importance))errors.push('Choose importance');if(!Array.isArray(m.blocks)||!m.blocks.length||m.blocks.length>60)errors.push('Use 1–60 content blocks');const ids=new Set();for(const b of m.blocks||[]){if(ids.has(b.id)||!b.id)errors.push('Block IDs must be unique');ids.add(b.id);if(!['heading','text','list','table','image','audio','youtube','link','facts','mistakes','tips','summary'].includes(b.type))errors.push('Unknown block type');if(['image','audio','youtube','link'].includes(b.type)&&!b.url)errors.push(b.type+' needs a URL');if(['image','audio','youtube','link'].includes(b.type)&&b.url&&!safeURL(b.url))errors.push('Use a safe HTTPS media URL');if(b.type==='youtube'&&b.url&&!youtubeId(b.url))errors.push('Use a valid YouTube video URL');if(b.type==='list'&&(!Array.isArray(b.items)||!b.items.length||b.items.some(x=>typeof x!=='string'||!x.trim())))errors.push('List blocks need non-empty text items');if(b.items!==undefined&&!Array.isArray(b.items))errors.push('Block items must be an array');if(b.type==='heading'&&!String(b.text||'').trim())errors.push('Heading text is required');if(b.type==='text'&&!String(b.html||'').replace(/<[^>]*>/g,' ').trim())errors.push('Paragraph text is required');if(b.type==='image'&&!b.alt)errors.push('Image alt text is required');if(b.type==='audio'&&!b.transcript)errors.push('Audio transcript is required');if(b.type==='table'&&(!Array.isArray(b.rows)||b.rows.some(r=>!Array.isArray(r))))errors.push('Table rows must be arrays');}return errors;}
-function safeURL(value,base=globalThis.location?.href||'https://example.invalid/'){if(typeof value!=='string'||!value.trim())return '';try{const u=new URL(value,base);if(u.protocol==='https:'||(u.protocol==='http:'&&u.origin===new URL(base).origin))return u.href;}catch{}return '';}
-function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.slice(1);else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.searchParams.get('v')||u.pathname.split('/').filter(Boolean).at(-1);return /^[a-zA-Z0-9_-]{11}$/.test(id)?id:'';}catch{return '';}}
-
-return {levels,published,canonicalSubjects,catalog,selectedSubjects,saveSelection,detachSubject,scopeFilters,aggregateMetrics,metrics,invalidateMetrics,accessibleGet,entityKey,savedState,setSaved,markRead,rateEntity,validateMaterial,safeURL,youtubeId};
-},
-"services/progress.js":async()=>{
-const {db,doc,runTransaction,serverTimestamp,Timestamp,get,page,save}=await __load("services/db.js");
-const {dayKey,addDays,nepalMidnight,uid,requireOnline,asDate}=await __load("utils.js");
-function sm2(previous={},rating,today=dayKey()){let ease=previous.easeFactor??2.5,reps=previous.repetitions??0,interval=previous.intervalDays??0,lapses=previous.lapses??0;const quality={again:1,hard:3,good:4,easy:5}[rating];if(quality===undefined)throw new Error('Unknown SRS rating');if(rating==='again'){reps=0;interval=1;lapses++;}else{reps++;interval=reps===1?1:reps===2?6:Math.max(1,Math.round(interval*ease*(rating==='hard'?.65:rating==='easy'?1.3:1)));}ease=Math.max(1.3,ease+.1-(5-quality)*(.08+(5-quality)*.02));const nextReviewDate=addDays(today,interval);return {easeFactor:Number(ease.toFixed(2)),repetitions:reps,intervalDays:interval,lapses,lastRating:rating,lastReviewDate:today,nextReviewDate};}
-function masteryAfter(p,correct,date){const dates=[...(p.recentCorrectDates||[])];let state=p.masteryState||'learning';if(correct){if(dates.at(-1)!==date)dates.push(date);if(dates.length>=3)state='mastered';}else{dates.length=0;state='needs_revision';}return {recentCorrectDates:dates.slice(-3),consecutiveCorrectDays:dates.length,masteryState:state};}
-async function record(uidValue,q,{type='view',correct,selectedOption,rating,flag,eventId=uid(),sessionId='study'}={}){requireOnline();const date=dayKey();const base=`users/${uidValue}`;await runTransaction(db,async tx=>{const refs={p:doc(db,base,'questionProgress',q.id),s:doc(db,base,'revisionSchedule',q.id),a:doc(db,base,'dailyActivity',date),summary:doc(db,base,'summary','current'),e:doc(db,base,'studySessions',sessionId,'events',eventId)};const dimensions=[['topic',q.topicId],['subject',q.subjectId],['level',String(q.level)],['exam',q.examId]].filter(([,value])=>value);const statRefs=dimensions.map(([kind,value])=>doc(db,base,'scopeStats',kind+'-'+value));const [ep,pp,ss,aa,summary,...statSnaps]=await Promise.all([tx.get(refs.e),tx.get(refs.p),tx.get(refs.s),tx.get(refs.a),tx.get(refs.summary),...statRefs.map(ref=>tx.get(ref))]);if(ep.exists())return;const old=pp.data()||{},schedule=ss.data()||{},activity=aa.data()||{},totals=summary.data()||{};const now=serverTimestamp();const p={...old,examId:q.examId,subjectId:q.subjectId,chapterId:q.chapterId,topicId:q.topicId,level:q.level,questionVersion:q.version,viewedAt:old.viewedAt||now,attempts:old.attempts||0,correct:old.correct||0,wrong:old.wrong||0,masteryState:old.masteryState||'not_started',updatedAt:now};let newMaster=false;
- if(old.questionVersion&&old.questionVersion!==q.version){p.recentCorrectDates=[];p.consecutiveCorrectDays=0;p.masteryState='needs_revision';p.masteredAt=null;}
- if(type==='answer'){Object.assign(p,masteryAfter(p,correct,date));p.attempts++;p.correct+=correct?1:0;p.wrong+=correct?0:1;p.lastAttemptAt=now;p.lastAnswerCorrect=!!correct;p.lastCorrectDate=correct?date:p.lastCorrectDate||null;p.lastReviewedAt=now;}
- if(type==='reveal'){p.studiedAt=old.studiedAt||now;if(p.masteryState==='not_started')p.masteryState='learning';}
- if(type==='flag'){p.learningFlag=flag==='not_learned'?'not_learned':'learned';p.personalDifficulty=flag==='difficult'?'difficult':'normal';if(flag==='not_learned')p.masteryState='needs_revision';}
- if(type==='rating'){const next=sm2(schedule,rating,date);p.lastReviewedAt=now;if(['good','easy'].includes(rating)&&(p.recentCorrectDates||[]).length>=2&&p.recentCorrectDates.at(-1)!==date)p.masteryState='mastered';if(rating==='again'){p.masteryState='needs_revision';p.recentCorrectDates=[];p.consecutiveCorrectDays=0;}tx.set(refs.s,{...next,questionId:q.id,nextReviewAt:Timestamp.fromDate(nepalMidnight(next.nextReviewDate)),lastReviewAt:now,updatedAt:now});}
- if(type==='answer'&&!ss.exists()){tx.set(refs.s,{questionId:q.id,easeFactor:2.5,repetitions:0,intervalDays:1,lapses:0,nextReviewDate:addDays(date,1),nextReviewAt:Timestamp.fromDate(nepalMidnight(addDays(date,1))),updatedAt:now});}
- for(let i=0;i<statRefs.length;i++){const previous=statSnaps[i].data()||{};tx.set(statRefs[i],{scopeType:dimensions[i][0],scopeId:dimensions[i][1],examId:q.examId,studied:(previous.studied||0)+(type==='reveal'&&!old.studiedAt?1:0),mastered:Math.max(0,(previous.mastered||0)+(p.masteryState==='mastered'&&old.masteryState!=='mastered'?1:old.masteryState==='mastered'&&p.masteryState!=='mastered'?-1:0)),attempts:(previous.attempts||0)+(type==='answer'?1:0),correct:(previous.correct||0)+(type==='answer'&&correct?1:0),updatedAt:now});}newMaster=p.masteryState==='mastered'&&old.masteryState!=='mastered';if(newMaster)p.masteredAt=now;
- const attempted=type==='answer'?1:0,c=type==='answer'&&correct?1:0,reviewed=type==='rating'?1:0;tx.set(refs.p,p);tx.set(refs.e,{questionId:q.id,questionVersion:q.version,type,selectedOption:selectedOption??null,isCorrect:correct??null,rating:rating||null,dateKey:date,occurredAt:now,createdAt:now,updatedAt:now});tx.set(refs.a,{dateKey:date,attempted:(activity.attempted||0)+attempted,correct:(activity.correct||0)+c,reviewed:(activity.reviewed||0)+reviewed,viewed:(activity.viewed||0)+(type==='view'?1:0),activeSeconds:activity.activeSeconds||0,updatedAt:now});const sameDay=totals.lastActiveDate===date,previousDay=totals.lastActiveDate===addDays(date,-1);const streak=sameDay?totals.currentStreak||1:previousDay?(totals.currentStreak||0)+1:1;if(newMaster)tx.set(doc(db,base,'achievements','first-mastery'),{kind:'first-mastery',earnedAt:now,criteriaVersion:1,updatedAt:now},{merge:true});if(streak>=7)tx.set(doc(db,base,'achievements','week-streak'),{kind:'week-streak',earnedAt:now,criteriaVersion:1,updatedAt:now},{merge:true});tx.set(doc(db,base),{lastActiveDate:date,lastActiveAt:now,updatedAt:now},{merge:true});tx.set(refs.summary,{...totals,attempts:(totals.attempts||0)+attempted,correct:(totals.correct||0)+c,mastered:Math.max(0,(totals.mastered||0)+(newMaster?1:old.masteryState==='mastered'&&p.masteryState!=='mastered'?-1:0)),studied:(totals.studied||0)+(type==='reveal'&&!old.studiedAt?1:0),currentStreak:streak,longestStreak:Math.max(streak,totals.longestStreak||0),lastActiveDate:date,updatedAt:now});});}
-async function bookmark(uidValue,q,on){const {remove}=await __load("services/db.js");if(on)await save(`users/${uidValue}/bookmarks/${q.id}`,{questionId:q.id,topicId:q.topicId,createdAt:serverTimestamp()});else await remove(`users/${uidValue}/bookmarks/${q.id}`);}
-async function personalNote(uidValue,qid,text){await save(`users/${uidValue}/personalNotes/question-${qid}`,{kind:'question_note',questionId:qid,text,createdAt:serverTimestamp()});}
-async function finishSession(uidValue,id,data){await save(`users/${uidValue}/studySessions/${id}`,{...data,status:'completed',endedAt:serverTimestamp(),createdAt:serverTimestamp()});}
-async function freezeStreak(uidValue){const date=dayKey(),d=new Date(date+'T00:00:00Z'),weekday=(d.getUTCDay()+6)%7,week=addDays(date,-weekday);await runTransaction(db,async tx=>{const ref=doc(db,`users/${uidValue}/summary/current`),snap=await tx.get(ref),s=snap.data()||{};if(s.freezeWeekKey===week)throw Object.assign(new Error('This week’s freeze token has already been used.'),{safe:true});if(s.lastActiveDate!==addDays(date,-2))throw Object.assign(new Error('Freeze is available after exactly one missed day.'),{safe:true});tx.set(ref,{...s,freezeWeekKey:week,freezeUsedDate:addDays(date,-1),lastActiveDate:addDays(date,-1),updatedAt:serverTimestamp()});});}
-
-return {sm2,masteryAfter,record,bookmark,personalNote,finishSession,freezeStreak};
-},
-"student/dashboard.js":async()=>{
-const {get,page,count,save,remove,serverTimestamp,Timestamp}=await __load("services/db.js");
-const {candidates,recommendationScore}=await __load("services/content.js");
-const {freezeStreak}=await __load("services/progress.js");
-const {esc,dayKey,addDays,pct,uid,displayDate,asDate}=await __load("utils.js");
-const {$,$$,metric,empty,action,toast,field,select,modal,pager,setLanguage}=await __load("ui/components.js");
-const {ring,heatmap,line}=await __load("ui/charts.js");
-const {sanitize}=await __load("ui/editor.js");
-const {logout}=await __load("auth.js");
-async function render(root,{path,params,context}){if(path==='/profile')return profile(root,context);if(path==='/planner')return planner(root,context);if(path==='/current-affairs'||path==='/formulas')return feed(root,path,context);if(path==='/notifications')return notifications(root,context);return dashboard(root,context);}
-async function dashboard(root,c){const base=`users/${c.user.uid}`,target=c.profile.targetExamId;const contentFilter=[['status','==','published'],...(target?[['examId','==',target]]:[])];const [summary,total,studied,mastered,bookmarks,due,activity,attempts,progress,notes,announcements]=await Promise.all([get(base+'/summary/current',{fresh:true}),count('questions',contentFilter),count(base+'/questionProgress',[['studiedAt','!=',null],...(target?[['examId','==',target]]:[])]),count(base+'/questionProgress',[['masteryState','==','mastered'],...(target?[['examId','==',target]]:[])]),count(base+'/bookmarks'),count(base+'/revisionSchedule',[['nextReviewDate','<=',dayKey()]]),page(base+'/dailyActivity',{sort:'dateKey',direction:'desc'}),page(base+'/testAttempts',{filters:[['status','==','submitted']]}),page(base+'/questionProgress'),page(base+'/chapterProgress'),page('announcements',{filters:[['status','==','published']]})]);const today=activity.items.find(x=>x.dateKey===dayKey())||{};const eligible=await candidates(target?[['examId','==',target]]:[],40),pmap=Object.fromEntries(progress.items.map(p=>[p.id,p]));const recommended=eligible.map(q=>({q,score:recommendationScore(q,pmap[q.id])})).sort((a,b)=>b.score-a.score).slice(0,3);const qod=(await candidates(target?[['examId','==',target]]:[],1,(Number(dayKey().replaceAll('-',''))%997)/997))[0];const recent=attempts.items.find(a=>a.result);const goal=c.profile.dailyQuestionGoal||20;if(!root.isConnected)return;root.innerHTML=`<div class="hero"><span>YOUR LEARNING SPACE</span><h1>नमस्ते, ${esc(c.profile.displayName||'Student')}</h1><p>${esc(c.settings.welcomeText||'One clear goal. A little progress every day.')}</p><div class="row"><a class="btn" href="#/study">Continue learning</a><a class="btn" href="#/revision">${due} questions due</a></div></div><div class="grid four section">${metric('Published questions',total,'/study')}${metric('Studied',studied,'/progress')}${metric('Mastered',mastered,'/progress')}${metric('Remaining',Math.max(0,total-studied),'/study')}</div><div class="grid two section"><section class="card"><div class="row between"><h2>Preparation</h2>${ring(pct(mastered,total))}</div><p>${mastered} mastered of ${total} published questions in your target scope.</p><div class="statline"><span>Current streak</span><b>${summary?.currentStreak||0} days</b></div><div class="statline"><span>Bookmarks</span><a href="#/revision?mode=bookmarked">${bookmarks}</a></div><div class="statline"><span>Recent test</span><b>${recent?recent.result.percentage+'%':'No test yet'}</b></div>${c.profile.examDate?`<p>Exam countdown: <b>${Math.max(0,Math.ceil((asDate(c.profile.examDate)-Date.now())/86400000))} days</b></p>`:''}</section><section class="card"><h2>Today’s goal</h2><div class="metric">${today.attempted||0}<small> / ${goal}</small></div><progress max="${goal}" value="${today.attempted||0}"></progress><p class="muted">Answers submitted on ${dayKey()} · Nepal time</p><h3>Weekly activity</h3>${heatmap(Array.from({length:7},(_,i)=>{const date=addDays(dayKey(),i-6);return {date,count:activity.items.find(x=>x.dateKey===date)?.attempted||0};}))}<a href="#/planner">Plan your next chapter →</a></section></div><section class="section"><div class="row between"><h2>Recommended for you</h2><a href="#/exam-mode">Exam day mode →</a></div><div class="grid three">${recommended.map(({q})=>`<a class="card" href="#/study/${encodeURIComponent(q.topicId)}?q=${encodeURIComponent(q.id)}"><span class="badge">L${q.level} · ${esc(q.importance)}</span><h3>${esc(q.questionText)}</h3><p class="muted">${pmap[q.id]?.wrong?'Revisit a previous mistake':q.importance==='high'?'High importance in your selected syllabus':'Build coverage of an unmastered topic'}</p></a>`).join('')||empty('Publish questions from the admin center to receive recommendations.')}</div></section><div class="grid two section"><section class="card"><h2>Recent notes</h2>${notes.items.slice(0,5).map(n=>`<p><a href="#/notes/${esc(n.id)}">${esc(n.title||n.id)}</a> · ${n.readAt?'Read':'In progress'}</p>`).join('')||'<p class="muted">Open chapter notes to start reading.</p>'}</section><section class="card"><h2>Announcements</h2>${announcements.items.filter(a=>(!a.endsAt||asDate(a.endsAt)>new Date())&&(!a.startsAt||asDate(a.startsAt)<=new Date())).slice(0,3).map(a=>`<h3>${esc(a.title)}</h3>${sanitize(a.bodyHtml||'')}`).join('')||'<p class="muted">No current announcements.</p>'}</section></div>${qod?`<section class="card section"><h2>Question of the day</h2><p>${esc(qod.questionText)}</p><a href="#/study/${encodeURIComponent(qod.topicId)}?q=${encodeURIComponent(qod.id)}">Open practice</a></section>`:''}`;}
-async function profile(root,c){const exams={items:[]};const p=c.profile||{displayName:c.user.displayName||'Student',preferences:{}};if(!root.isConnected)return;root.innerHTML=`<h1>Your profile</h1><p class="muted">${esc(c.user.email)} · ${c.user.emailVerified?'Email verified':'Email not verified'}</p><p id="profile-status" role="status"></p><div class="grid two"><form id="profile" class="card form">${field('Full name','displayName',p.displayName,'text','required maxlength="100"')}${select('Target exam','targetExamId',[['','All exams'],...(p.targetExamId?[[p.targetExamId,p.targetExamId]]:[])],p.targetExamId)}${field('Daily question goal','dailyQuestionGoal',p.dailyQuestionGoal||20,'number','min="1" max="500" required')}${field('Daily minutes goal','dailyMinutesGoal',p.dailyMinutesGoal||30,'number','min="1" max="600" required')}${field('Exam date','examDate',p.examDate?dayKey(p.examDate):'','date')}${select('Language preference','language',[['ne','नेपाली'],['en','English']],p.preferences?.language||'ne')}<button class="primary">Save profile</button></form><section class="card"><h2>Your study tools</h2><p>${esc(c.user.email)}</p><div class="stack"><button id="install">Open on your phone</button><button id="saved-notes">My saved notes and highlights</button><button id="badges">My milestones</button><button id="pomodoro">Pomodoro timer</button><button id="freeze">Use weekly streak freeze</button><button id="signout">Sign out</button></div><p class="muted">Freeze can restore exactly one missed day, once per Nepal calendar week.</p></section></div>`;$('#profile').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));const data={displayName:f.displayName,targetExamId:f.targetExamId,dailyQuestionGoal:Number(f.dailyQuestionGoal),dailyMinutesGoal:Number(f.dailyMinutesGoal),examDate:f.examDate?Timestamp.fromDate(new Date(f.examDate+'T00:00:00+05:45')):null,preferences:{...p.preferences,language:f.language}};await save(`users/${c.user.uid}`,data);Object.assign(p,data);setLanguage(data.preferences.language);toast('Profile saved.');});$('#signout').onclick=action(logout);$('#freeze').onclick=action(async()=>{await freezeStreak(c.user.uid);toast('Streak freeze applied.');});$('#install').onclick=()=>modal('Open on your phone','<p>Open this website’s GitHub Pages address in your phone browser. You can use your browser menu to add a home-screen shortcut. Firebase sign-in and new saves need an internet connection.</p>');$('#saved-notes').onclick=action(async()=>{let cursor=null;const d=modal('Saved notes and highlights','<div id="saved-list" class="stack"></div><button id="saved-more">Load more</button>');async function load(){const p=await page(`users/${c.user.uid}/personalNotes`,{cursor});$('#saved-list',d).insertAdjacentHTML('beforeend',p.items.map(n=>`<article class="card"><span class="badge">${esc(n.kind)}</span><p>${esc(n.text)}</p><a href="#${n.kind==='chapter_highlight'?'/notes/'+encodeURIComponent(n.chapterId):'/study?question='+encodeURIComponent(n.questionId)}">Open study</a><button data-delete-note="${esc(n.id)}">Delete</button></article>`).join('')||empty('No saved notes.'));cursor=p.cursor;$('#saved-more',d).hidden=!p.hasNext;$$('[data-delete-note]',d).forEach(b=>b.onclick=action(async()=>{await remove(`users/${c.user.uid}/personalNotes/${b.dataset.deleteNote}`);b.closest('article').remove();}));}$('#saved-more',d).onclick=action(load);await load();});$('#badges').onclick=action(async()=>{const p=await page(`users/${c.user.uid}/achievements`);modal('Your milestones',p.items.map(b=>`<div class="card"><h3>${esc(b.kind)}</h3><p>${displayDate(b.earnedAt)}</p></div>`).join('')||empty('Master a question or build a seven-day streak to earn your first milestone.'));});$('#pomodoro').onclick=()=>{const d=modal('Focus timer','<div class="metric" id="pomo-time">25:00</div><button id="pomo-start">Start / Pause</button><button id="pomo-reset">Reset</button>');let remaining=1500,running=false;const timer=setInterval(()=>{if(!running)return;remaining--;$('#pomo-time',d).textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');if(remaining<=0){running=false;toast('Focus session complete. Take a short break.');}},1000);$('#pomo-start',d).onclick=()=>running=!running;$('#pomo-reset',d).onclick=()=>{remaining=1500;running=false;$('#pomo-time',d).textContent='25:00';};d.addEventListener('close',()=>clearInterval(timer));};
- const form=$('#profile',root);let edited=false;form.addEventListener('input',()=>edited=true);form.addEventListener('change',()=>edited=true);const hydrate=()=>{if(edited||!root.isConnected)return;for(const key of ['displayName','dailyQuestionGoal','dailyMinutesGoal']){const control=form.elements.namedItem(key);if(control&&p[key]!==undefined)control.value=p[key];}if(p.examDate)form.elements.namedItem('examDate').value=dayKey(p.examDate);};window.addEventListener('sajilo-account-ready',hydrate);c.setCleanup(()=>window.removeEventListener('sajilo-account-ready',hydrate));
- page('exams',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'}).then(exams=>{const control=root.querySelector('[name=targetExamId]');if(!control||!root.isConnected)return;const selected=control.value;control.innerHTML='<option value="">All exams</option>'+exams.items.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.title)+'</option>').join('');if(selected&&!exams.items.some(e=>e.id===selected))control.insertAdjacentHTML('beforeend','<option value="'+esc(selected)+'">'+esc(selected)+'</option>');control.value=selected;}).catch(error=>{console.error('Profile examination list unavailable',error);const status=root.querySelector('#profile-status');if(status)status.textContent='Your account is available. Examination choices could not load; check connection or Firestore Rules.';});
-}
-async function planner(root,c){let cursor=null,history=[];async function draw(){const p=await page(`users/${c.user.uid}/plans`,{sort:'dateKey',direction:'asc',cursor});if(!root.isConnected)return;root.innerHTML=`<h1>Study planner</h1><form id="plan" class="card filters">${field('Date','dateKey',dayKey(),'date','required')}${field('Chapter ID','chapterId','','text','required')}${field('Question goal','targetQuestions',20,'number','min="1" max="500"')}${field('Minutes','targetMinutes',30,'number','min="1" max="600"')}<button class="primary">Add plan</button></form><div class="stack section">${p.items.map(x=>`<div class="card row between"><div><b>${esc(x.dateKey)}</b><p><a href="#/notes/${esc(x.chapterId)}">${esc(x.chapterId)}</a> · ${x.targetQuestions} questions · ${x.targetMinutes} minutes</p><span class="badge">${esc(x.status)}</span></div><div class="row"><button data-done="${esc(x.id)}">${x.status==='completed'?'Reopen':'Mark complete'}</button><button data-delete="${esc(x.id)}">Delete</button></div></div>`).join('')||empty('No plans yet.')}</div>`;$('#plan').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));if(!await get('chapters/'+f.chapterId))throw Object.assign(new Error('Chapter ID was not found.'),{safe:true});await save(`users/${c.user.uid}/plans/${uid()}`,{...f,targetQuestions:Number(f.targetQuestions),targetMinutes:Number(f.targetMinutes),status:'planned',createdAt:serverTimestamp()});await draw();});$$('[data-done]',root).forEach(b=>b.onclick=action(async()=>{const x=p.items.find(x=>x.id===b.dataset.done);await save(`users/${c.user.uid}/plans/${x.id}`,{status:x.status==='completed'?'planned':'completed'});await draw();}));$$('[data-delete]',root).forEach(b=>b.onclick=action(async()=>{await remove(`users/${c.user.uid}/plans/${b.dataset.delete}`);await draw();}));pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-async function feed(root,path){const kind=path==='/formulas'?'formulaSheets':'currentAffairs';let cursor=null,history=[];async function draw(){const p=await page(kind,{filters:[['status','==','published']],cursor});if(!root.isConnected)return;root.innerHTML=`<h1>${kind==='formulaSheets'?'Formula library':'Current affairs'}</h1><div class="stack">${p.items.map(x=>`<article class="card"><span class="feed-date">${esc(x.dateKey||'')} ${esc(x.period||'')}</span><h2>${esc(x.title)}</h2><div class="note-body">${sanitize(x.contentHtml)}</div>${(x.sources||[]).map(s=>`<p>Source: ${esc(s.title||s)}</p>`).join('')}</article>`).join('')||empty()}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-async function notifications(root,c){const p=await page(`users/${c.user.uid}/notifications`);const due=await count(`users/${c.user.uid}/revisionSchedule`,[['nextReviewDate','<=',dayKey()]]);if(!root.isConnected)return;root.innerHTML=`<h1>Notifications</h1><div class="card"><h2>Revision reminder</h2><p>${due} questions are due for review.</p><a class="btn" href="#/revision">Start revision</a></div><div class="stack section">${p.items.map(n=>`<article class="card"><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.targetRoute?`<a href="#${esc(n.targetRoute)}">Open</a>`:''}<button data-read="${esc(n.id)}" ${n.readAt?'disabled':''}>${n.readAt?'Read':'Mark read'}</button></article>`).join('')||empty('No personal notifications.')}</div>`;$$('[data-read]',root).forEach(b=>b.onclick=action(async()=>{await save(`users/${c.user.uid}/notifications/${b.dataset.read}`,{readAt:serverTimestamp()});b.textContent='Read';}));}
-
-return {render};
-},
-"student/learning.js":async()=>{
-const {get,page,count,save,remove,allPages,serverTimestamp,cache,withDeadline}=await __load("services/db.js");
-const {catalog,canonicalSubjects,selectedSubjects,saveSelection,detachSubject,levels,metrics,aggregateMetrics,scopeFilters,savedState,setSaved,markRead,entityKey,safeURL,youtubeId}=await __load("services/learning.js");
-const {esc,uid,pct,dayKey,addDays,displayDate,debounce,fail,asDate}=await __load("utils.js");
-const {$,$$,action,toast,empty,field,select,modal,pager,confirmDialog,showError,skeleton}=await __load("ui/components.js");
-const {ring,heatmap}=await __load("ui/charts.js");
-const {sanitize}=await __load("ui/editor.js");
-async function render(root,{path,params,context:c}){if(path.startsWith('/onboarding/')||path==='/subjects/add')return onboarding(root,path,params,c);if(path==='/saved')return saved(root,params,c);if(path.startsWith('/materials/'))return reader(root,decodeURIComponent(path.split('/')[2]),c);if(path.startsWith('/topics/'))return topic(root,decodeURIComponent(path.split('/')[2]),params,c);if(path.startsWith('/chapters/'))return chapter(root,decodeURIComponent(path.split('/')[2]),c);if(path.startsWith('/subjects/'))return subject(root,decodeURIComponent(path.split('/')[2]),c);if(path==='/my-subjects')return mySubjects(root,c);return dashboard(root,c);}
-const link=(path,label,cls='btn')=>`<a class="${cls}" href="#${esc(path)}">${label}</a>`;
-const readingLabel=m=>m.materials?`${m.read}/${m.materials} read`:'No materials yet';
-const masteryLabel=m=>m.mastery===null?'Not assessed':`${m.mastery}% mastered`;
-function metricStrip(m){return `<div class="learning-metrics"><div><small>Reading</small><strong>${readingLabel(m)}</strong><progress value="${m.read}" max="${m.materials||1}"></progress></div><div><small>Assessed coverage</small><strong>${m.assessed}/${m.questions} questions</strong></div><div><small>Mastery</small><strong>${masteryLabel(m)}</strong></div></div>`;}
-function subjectCard(s,m,exams=[]){return `<article class="card subject-card"><div class="row between"><span class="subject-icon">${esc((s.title||'S').slice(0,1))}</span><span class="badge">${masteryLabel(m)}</span></div><h2>${esc(s.title)}</h2><p class="muted">${esc(exams.join(' · ')||s.description||'Your selected syllabus')}</p>${metricStrip(m)}<div class="row between section">${link('/subjects/'+encodeURIComponent(s.id),'Continue study →','btn primary')}<button data-remove-subject="${esc(s.id)}" aria-label="Remove ${esc(s.title)} from My Subjects">Remove</button></div></article>`;}
-async function onboarding(root,path,params,c){const cat=await catalog(),editing=path==='/subjects/add'||params.get('edit')==='1';let examIds=[...(c.profile.pendingExamIds||c.profile.selectedExamIds||[])];if(!examIds.length&&c.profile.targetExamId)examIds=[c.profile.targetExamId];let chosen=new Set((await selectedSubjects(c.user.uid)).map(s=>s.id));let step=path.endsWith('subjects')?2:1;function draw(){if(!root.isConnected)return;root.innerHTML=`<div class="onboarding-layout"><aside class="onboarding-story"><span class="brand-symbol">S</span><p class="eyebrow">MAKE IT YOURS</p><h1>Learn a little.<br>Remember more.</h1><p>Choose your destination. Build a clear path through the subjects that matter to you.</p><div class="learning-loop"><span>Read</span><span>Recall</span><span>Revise</span></div></aside><section class="card onboarding-form"><div class="row between"><span class="badge">Step ${step} of 2</span>${editing?link('/my-subjects','Cancel'):''}</div><h1>${step===1?'कुन परीक्षाको तयारी गर्दै हुनुहुन्छ?':'Choose your subjects'}</h1><p class="muted">${step===1?'Choose one or more examinations. You can change these later.':'Shared subjects appear once. Your previous learning history is preserved.'}</p><div id="selection-list" class="stack">${step===1?cat.exams.map(e=>`<label class="choice ${examIds.includes(e.id)?'picked':''}"><input type="checkbox" value="${esc(e.id)}" ${examIds.includes(e.id)?'checked':''}><span><b>${esc(e.title)}</b><small>${esc(e.description||'')}</small></span></label>`).join('')||empty('No examinations have been published yet. Ask your administrator to add them.'):canonicalSubjects(cat.subjects,examIds).map(s=>`<label class="choice ${chosen.has(s.id)?'picked':''}"><input type="checkbox" value="${esc(s.id)}" ${chosen.has(s.id)?'checked':''}><span><b>${esc(s.title)}</b><small>${esc(cat.exams.filter(e=>(s.examIds||[s.examId]).includes(e.id)&&examIds.includes(e.id)).map(e=>e.title).join(' · '))}</small></span></label>`).join('')||empty('These examinations have no published subjects yet. Go back and choose another examination.')}</div><div class="row section">${step===2?'<button id="setup-back">← Back</button>':''}<button id="setup-next" class="primary">${step===1?'Continue to subjects →':'Save subjects & open dashboard'}</button></div><p id="setup-status" class="muted" role="status"></p></section></div>`;$$('#selection-list input',root).forEach(el=>el.onchange=()=>{el.closest('label').classList.toggle('picked',el.checked);if(step===1)examIds=$$('#selection-list input:checked').map(x=>x.value);else el.checked?chosen.add(el.value):chosen.delete(el.value);});if($('#setup-back'))$('#setup-back').onclick=()=>{step=1;draw();};$('#setup-next').onclick=action(async()=>{if(step===1){if(!examIds.length||examIds.length>10)fail('Choose between 1 and 10 examinations.');await save(`users/${c.user.uid}`,{pendingExamIds:examIds,onboardingStep:'subjects'});Object.assign(c.profile,{pendingExamIds:examIds,onboardingStep:'subjects'});step=2;draw();return;}const eligible=canonicalSubjects(cat.subjects,examIds).map(s=>s.id),ids=[...chosen].filter(id=>eligible.includes(id));$('#setup-status').textContent='Saving your selection…';await saveSelection(c.user.uid,examIds,ids);Object.assign(c.profile,{selectedExamIds:examIds,pendingExamIds:[],onboardingComplete:true,targetExamId:examIds[0]});c.go('/');});}draw();}
-async function mySubjects(root,c){const [subjects,cat]=await Promise.all([selectedSubjects(c.user.uid),catalog()]);const ms=await Promise.all(subjects.map(s=>metrics(c.user.uid,{subjectId:s.id})));if(!root.isConnected)return;root.innerHTML=`<div class="page-heading"><div><p class="eyebrow">YOUR CHOSEN SYLLABUS</p><h1>My Subjects</h1><p class="muted">A clear path, one topic at a time.</p></div>${link('/subjects/add','＋ Add / manage subjects','btn primary')}</div><div class="filters"><label>Search subjects<input id="subject-search" type="search" placeholder="Subject name"></label>${select('Examination','examFilter',[['','All selected examinations'],...cat.exams.filter(e=>(c.profile.selectedExamIds||[]).includes(e.id)).map(e=>[e.id,e.title])])}</div><div id="subject-grid" class="grid three"></div>`;function draw(){const search=$('#subject-search').value.toLowerCase(),exam=$('[name=examFilter]').value;$('#subject-grid').innerHTML=subjects.map((s,i)=>({s,m:ms[i]})).filter(({s})=>s.title.toLowerCase().includes(search)&&(!exam||(s.examIds||[s.examId]).includes(exam))).map(({s,m})=>subjectCard(s,m,cat.exams.filter(e=>(s.examIds||[s.examId]).includes(e.id)&&(c.profile.selectedExamIds||[]).includes(e.id)).map(e=>e.title))).join('')||empty('No matching subjects. Add a subject to begin.');$$('[data-remove-subject]').forEach(b=>b.onclick=action(async()=>{if(!await confirmDialog('Remove this subject from My Subjects? Your reading, test history and mastery will remain saved.'))return;await detachSubject(c.user.uid,b.dataset.removeSubject);toast('Subject removed. You can add it again without losing progress.');await mySubjects(root,c);}));}$('#subject-search').oninput=draw;$('[name=examFilter]').onchange=draw;draw();}
-async function dashboard(root,c){const subjects=await selectedSubjects(c.user.uid);if(!subjects.length){if(!root.isConnected)return;root.innerHTML=`<div class="hero"><p class="eyebrow">YOUR NEXT SMALL STEP</p><h1>नमस्ते, ${esc(c.profile.displayName||'Student')}</h1><p>Choose a subject and start building knowledge that lasts.</p>${link('/subjects/add','Choose my subjects →','btn')}</div>${empty('No subjects selected. Previously saved progress remains available in Saved and Progress.')}`;return;}const base=`users/${c.user.uid}`;const [ms,summary,activity,attempts,resume]=await Promise.all([Promise.all(subjects.map(s=>metrics(c.user.uid,{subjectId:s.id}))),get(base+'/summary/current',{fresh:true}),allPages(base+'/dailyActivity',{filters:[['dateKey','>=',addDays(dayKey(),-6)]],sort:'dateKey'}),page(base+'/testAttempts',{filters:[['status','==','submitted']]}),get(base+'/learningState/current',{fresh:true})]);const overall=aggregateMetrics(ms),today=activity.find(x=>x.dateKey===dayKey()),goal=c.profile.dailyQuestionGoal||20;const recent=attempts.items.find(a=>a.result);const due=await count(base+'/revisionSchedule',[['nextReviewDate','<=',dayKey()]]);if(!root.isConnected)return;root.innerHTML=`<div class="page-heading"><div><p class="eyebrow">YOUR PREPARATION, AT A GLANCE</p><h1>नमस्ते, ${esc(c.profile.displayName||'Student')}</h1></div>${link('/profile','Profile & goals')}</div><div class="dashboard-lead"><section class="hero"><p class="eyebrow">YOUR NEXT STEP</p><h2>${resume?.materialId?'Continue where you left off.':'Start with one meaningful topic.'}</h2><p>${resume?.title?esc(resume.title):'Understand a little today. Recall it tomorrow.'}</p>${link(resume?.materialId?'/materials/'+encodeURIComponent(resume.materialId):'/my-subjects',resume?.materialId?'Continue reading →':'Explore my subjects →','btn')}</section><section class="card"><h2>Today’s goal</h2><div class="metric">${today?.attempted||0}<small> / ${goal}</small></div><progress value="${today?.attempted||0}" max="${goal}"></progress><p class="muted">Answers submitted today · Nepal time</p>${link('/profile','Edit goal')}</section></div><div class="grid four section"><div class="card"><small>Reading</small><h2>${readingLabel(overall)}</h2></div><div class="card"><small>Mastery</small><h2>${masteryLabel(overall)}</h2></div><div class="card"><small>Latest submitted test</small><h2>${recent?recent.result.percentage+'%':'Not assessed'}</h2></div><a class="card" href="#/revision?mode=due"><small>Due reviews</small><h2>${due}</h2><p>Review is due today</p></a></div><div class="row between section"><h2>My Subjects</h2>${link('/my-subjects','View all →')}</div><div class="grid three">${subjects.slice(0,3).map((s,i)=>subjectCard(s,ms[i])).join('')}</div><div class="grid two section"><section class="card"><h2>Your study rhythm</h2>${heatmap(Array.from({length:7},(_,i)=>{const date=addDays(dayKey(),i-6);return {date,count:activity.find(x=>x.dateKey===date)?.attempted||0};}))}<p>${summary?.currentStreak||0} day streak · ${overall.accuracy===null?'No submitted answers yet':overall.accuracy+'% answer accuracy'}</p>${c.profile.examDate?`<p>Exam in ${Math.max(0,Math.ceil((asDate(c.profile.examDate)-Date.now())/86400000))} days</p>`:''}${link('/progress','View progress →')}</section><section class="card"><h2>Practice with purpose</h2><p>Read → recall → test → understand mistakes → revise → master.</p><div class="row">${link('/tests','Build a test','btn primary')}${link('/revision','Quick revision')}${link('/saved','Open saved items')}</div></section></div><h2 class="section">Recommended next steps</h2><div class="grid three">${ms.map((m,i)=>({m,s:subjects[i]})).sort((a,b)=>(a.m.accuracy??50)-(b.m.accuracy??50)).slice(0,3).map(({m,s})=>`<a class="card" href="#/subjects/${encodeURIComponent(s.id)}"><span class="badge">${m.attempts?'Recall and strengthen':'Start here'}</span><h3>${esc(s.title)}</h3><p class="muted">${m.attempts?'Based on your actual answer history.':'This selected subject is not yet assessed.'}</p></a>`).join('')}</div>`;$$('[data-remove-subject]').forEach(b=>b.onclick=()=>c.go('/my-subjects'));}
-async function subject(root,id,c){const s=await get('subjects/'+id);if(!s||s.status!=='published')fail('Subject is unavailable.');await scopeList(root,c,{kind:'chapters',scope:{subjectId:id},title:s.title,breadcrumb:link('/my-subjects','My Subjects'),next:'/chapters/',test:'/tests?subject='+encodeURIComponent(id)});}
-async function chapter(root,id,c){const ch=await get('chapters/'+id);if(!ch||ch.status!=='published')fail('Chapter is unavailable.');await scopeList(root,c,{kind:'topics',scope:{chapterId:id},title:ch.title,breadcrumb:link('/subjects/'+encodeURIComponent(ch.subjectId),'Subject'),next:'/topics/',test:'/tests?chapter='+encodeURIComponent(id)});}
-async function scopeList(root,c,config){let cursor=null,previous=[];const m=await metrics(c.user.uid,config.scope);async function draw(){const p=await page(config.kind,{filters:[['status','==','published'],...scopeFilters(config.scope)],sort:'sortOrder',direction:'asc',cursor});const values=await Promise.all(p.items.map(x=>metrics(c.user.uid,{[config.kind==='chapters'?'chapterId':'topicId']:x.id})));if(!root.isConnected)return;root.innerHTML=`<div class="breadcrumbs">${config.breadcrumb} / ${esc(config.title)}</div><div class="subject-cover"><p class="eyebrow">${config.kind==='chapters'?'SUBJECT':'CHAPTER'} OVERVIEW</p><h1>${esc(config.title)}</h1><p>Read clearly. Recall confidently.</p></div>${metricStrip(m)}<div class="row between section"><h2>${config.kind==='chapters'?'Chapters':'Topics & levels'}</h2>${link(config.test,'Start '+(config.kind==='chapters'?'subject':'chapter')+' test','btn primary')}</div><div class="grid two">${p.items.map((x,i)=>`<article class="card"><h2>${esc(x.title)}</h2><p class="muted">${esc(x.description||'')}</p>${metricStrip(values[i])}${config.kind==='topics'?`<div class="row section">${levels.map(l=>link('/topics/'+encodeURIComponent(x.id)+'?level='+l.id,'L'+l.id+' '+l.title)).join('')}</div>`:link(config.next+encodeURIComponent(x.id),'Continue study →','btn primary')}</article>`).join('')||empty('Published content is being prepared.')}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=previous.pop();return draw();}});}await draw();}
-async function topic(root,id,params,c){const topic=await get('topics/'+id);if(!topic||topic.status!=='published')fail('Topic is unavailable.');const level=Number(params.get('level')||1);if(![1,2,3].includes(level))fail('Choose a valid level.');const scope={topicId:id,level},m=await metrics(c.user.uid,scope);let cursor=null,previous=[];async function draw(){const p=await page('materials',{filters:[['status','==','published'],...scopeFilters(scope)],cursor});if(!root.isConnected)return;root.innerHTML=`<div class="breadcrumbs">${link('/chapters/'+encodeURIComponent(topic.chapterId),'Chapter')} / ${esc(topic.title)}</div><h1>${esc(topic.title)}</h1><p class="muted">Understand. Then try it.</p><div class="level-tabs">${levels.map(l=>link('/topics/'+encodeURIComponent(id)+'?level='+l.id,'L'+l.id+' · '+l.title,'btn '+(l.id===level?'primary':''))).join('')}</div><p class="muted">${levels[level-1].detail}. Importance is shown separately on each material.</p>${metricStrip(m)}<h2 class="section">Study materials</h2><div class="grid two">${p.items.map(x=>`<article class="card"><span class="badge">${esc(x.importance)} importance</span><h2>${esc(x.title)}</h2><p>${esc(x.description||'Explanation, memory cues and linked practice.')}</p>${link('/materials/'+encodeURIComponent(x.id),'Read this material →','btn primary')}</article>`).join('')||empty('No published materials at this level yet. Questions may still be available below.')}</div><div class="row section">${link('/study/'+encodeURIComponent(id)+'?level='+level,'Practice questions')}${link('/tests?topic='+encodeURIComponent(id)+'&level='+level,'Test what you learned','btn primary')}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=previous.pop();return draw();}});}await draw();}
-function renderBlocks(blocks){return blocks.map((b,i)=>{const id='block-'+esc(b.id||i),url=safeURL(b.url||'');let inner='';switch(b.type){case 'heading':inner=`<h2>${esc(b.text)}</h2>`;break;case 'text':inner=sanitize(b.html||'');break;case 'list':inner=`<ul>${(b.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;break;case 'table':inner=`<div class="tablewrap"><table>${(b.rows||[]).map((r,j)=>`<tr>${r.map(v=>`<${j?'td':'th'}>${esc(v)}</${j?'td':'th'}>`).join('')}</tr>`).join('')}</table></div>`;break;case 'image':inner=url?`<figure><button class="image-open" data-image="${esc(url)}" data-alt="${esc(b.alt)}" aria-label="Enlarge image: ${esc(b.alt)}"><img src="${esc(url)}" alt="${esc(b.alt)}" loading="lazy"></button><figcaption>${esc(b.caption||b.alt)}</figcaption><p data-media-error hidden>Image could not load. <button data-retry-image>Retry</button></p></figure>`:'';break;case 'audio':inner=url?`<section class="media-card"><h3>${esc(b.title||'Audio explanation')}</h3><audio controls preload="metadata" src="${esc(url)}"></audio><p data-media-error hidden>Audio could not load. <button data-retry-audio>Retry</button></p><details><summary>Read transcript</summary><p>${esc(b.transcript)}</p></details></section>`:'';break;case 'youtube':{const video=youtubeId(b.url);inner=video?`<section class="media-card"><h3>${esc(b.title||'Video explanation')}</h3><div class="video-frame"><button data-youtube="${video}" data-title="${esc(b.title||'Video explanation')}">Play video · loads YouTube</button></div>${b.transcript?`<details><summary>Transcript / summary</summary><p>${esc(b.transcript)}</p></details>`:''}<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></section>`:'';break;}case 'link':inner=url?`<p><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(b.title||'Reference source')} ↗</a></p>`:'';break;default:inner=`<section class="factbox"><h3>${esc({facts:'Key facts',mistakes:'Common mistakes',tips:'Exam tips',summary:'Remember this'}[b.type]||'Summary')}</h3><p>${esc(b.text||'')}</p>${b.items?.length?`<ul>${b.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}</section>`;}return `<section id="${id}" data-block="${esc(b.id||i)}" class="content-block">${inner}</section>`;}).join('');}
-function bindMedia(root){$$('[data-image]',root).forEach(b=>b.onclick=()=>{const d=modal('Image viewer',`<div class="row"><button data-zoom-in>Zoom in</button><button data-zoom-out>Zoom out</button></div><div class="lightbox"><img src="${esc(b.dataset.image)}" alt="${esc(b.dataset.alt)}"></div>`);let scale=1;const update=()=>$('.lightbox img',d).style.transform=`scale(${scale})`;$('[data-zoom-in]',d).onclick=()=>{scale=Math.min(4,scale+.25);update();};$('[data-zoom-out]',d).onclick=()=>{scale=Math.max(1,scale-.25);update();};});$$('[data-youtube]',root).forEach(b=>b.onclick=()=>{const iframe=document.createElement('iframe');iframe.src='https://www.youtube-nocookie.com/embed/'+b.dataset.youtube+'?autoplay=1';iframe.title=b.dataset.title;iframe.allow='accelerometer; autoplay; encrypted-media; picture-in-picture';iframe.referrerPolicy='strict-origin-when-cross-origin';iframe.allowFullscreen=true;b.parentElement.replaceChildren(iframe);});$$('figure img',root).forEach(img=>{img.onerror=()=>{img.closest('figure').querySelector('[data-media-error]').hidden=false;};const b=img.closest('figure').querySelector('[data-retry-image]');if(b)b.onclick=()=>{img.src=img.src;};});$$('audio',root).forEach(audio=>{audio.onerror=()=>audio.parentElement.querySelector('[data-media-error]').hidden=false;audio.parentElement.querySelector('[data-retry-audio]').onclick=()=>audio.load();});}
-async function reader(root,id,c){const m=await get('materials/'+id);if(!m||m.status!=='published')fail('This material is unavailable.');const base=`users/${c.user.uid}`;const [progress,saved]=await Promise.all([get(base+'/materialProgress/'+id,{fresh:true}),savedState(c.user.uid,'material',id)]);let isRead=progress?.read&&progress.materialVersion===m.version;if(!root.isConnected)return;root.innerHTML=`<div class="reading-progress" id="reading-progress"></div><div class="breadcrumbs">${link('/topics/'+encodeURIComponent(m.topicId)+'?level='+m.level,'Topic / L'+m.level)} / ${esc(m.title)}</div><div class="row between"><h1>${esc(m.title)}</h1><div class="row font-controls"><button data-font="-1" aria-label="Smaller reading text">A−</button><button data-font="1" aria-label="Larger reading text">A＋</button><button id="reading-mode" aria-pressed="false">Reading mode</button><button id="print-material">Print / PDF</button></div></div><div class="row"><span class="badge">L${m.level} · ${levels[m.level-1].title}</span><span class="badge">${esc(m.importance)} editorial importance</span><span class="muted">About ${Math.max(1,Math.ceil(m.blocks.map(b=>String(b.text||b.html||b.items?.join(' ')||'').replace(/<[^>]*>/g,' ')).join(' ').split(/\s+/).filter(Boolean).length/180))} min read</span></div><div class="card filters section"><label>Find in this material<input id="material-find" type="search" maxlength="100" placeholder="Search Nepali or English text"></label><button id="material-find-next" disabled>Next match</button><button id="material-find-clear">Clear search</button><span id="material-find-count" role="status"></span></div><div class="material-layout section"><aside class="card material-toc"><h3>On this page</h3>${m.blocks.filter(b=>b.type==='heading').map(b=>`<a href="#block-${esc(b.id)}" data-toc="block-${esc(b.id)}">${esc(b.text)}</a>`).join('')||'<p class="muted">Read the material below.</p>'}</aside><article class="card note-body" id="material-body">${renderBlocks(m.blocks)}<hr><p class="muted">Source: ${esc(m.source?.title||'Author-created material')} ${safeURL(m.source?.url)?`<a href="${esc(safeURL(m.source.url))}" target="_blank" rel="noopener noreferrer">Open source ↗</a>`:''}</p></article><aside class="card material-tools"><h3>Your study tools</h3><button id="mark-material" class="primary">${isRead?'Mark as unread':'Mark as read'}</button>${[['favourite','Favourite material'],['revision','Add to revision'],['personalImportant','Important for me']].map(([flag,label])=>`<button data-save-flag="${flag}" aria-pressed="${!!saved[flag]}">${saved[flag]?'✓ ':''}${label}</button>`).join('')}<button id="material-note">Personal note</button><button id="material-report">Report an issue</button><button id="material-share">Copy link</button>${link('/tests?topic='+encodeURIComponent(m.topicId)+'&level='+m.level,'Test what you learned →','btn primary')}<p class="muted">Marking as read changes reading progress, not mastery.</p><span id="position-status" class="muted" role="status"></span></aside></div><nav class="row between section" aria-label="Other materials in this topic"><a id="previous-material" class="btn" hidden>Previous material</a><a id="next-material" class="btn" hidden>Next material</a><span id="material-navigation-status" class="muted" role="status"></span></nav>`;bindMedia(root);$$('[data-toc]').forEach(a=>a.onclick=e=>{e.preventDefault();document.getElementById(a.dataset.toc)?.scrollIntoView({behavior:'smooth'});});$$('[data-font]').forEach(b=>b.onclick=()=>{const old=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--reader'))||18,n=Math.max(14,Math.min(26,old+Number(b.dataset.font)));document.documentElement.style.setProperty('--reader',n+'px');localStorage.setItem('sajilo-font',n);});let findTimer=null,found=[],matchIndex=-1;
-const clearMatches=()=>{$$('mark[data-reader-match]',root).forEach(mark=>mark.replaceWith(document.createTextNode(mark.textContent)));$('#material-body',root).normalize();found=[];matchIndex=-1;};
-const showMatch=()=>{if(!found.length)return;matchIndex=(matchIndex+1)%found.length;found.forEach((node,i)=>node.classList.toggle('current-match',i===matchIndex));found[matchIndex].scrollIntoView({behavior:'smooth',block:'center'});$('#material-find-count',root).textContent=(matchIndex+1)+' / '+found.length+' matches';};
-const searchMaterial=()=>{clearMatches();const needle=$('#material-find',root).value.trim().toLocaleLowerCase();if(!needle){$('#material-find-count',root).textContent='';$('#material-find-next',root).disabled=true;return;}const walker=document.createTreeWalker($('#material-body',root),NodeFilter.SHOW_TEXT);const textNodes=[];let node;while((node=walker.nextNode()))if(!node.parentElement.closest('audio,iframe,button,script,style'))textNodes.push(node);for(const text of textNodes){const raw=text.nodeValue,lower=raw.toLocaleLowerCase();let start=0,index=lower.indexOf(needle);if(index<0)continue;const fragment=document.createDocumentFragment();while(index>=0&&found.length<1000){fragment.append(document.createTextNode(raw.slice(start,index)));const mark=document.createElement('mark');mark.dataset.readerMatch='true';mark.textContent=raw.slice(index,index+needle.length);fragment.append(mark);found.push(mark);start=index+needle.length;index=lower.indexOf(needle,start);}fragment.append(document.createTextNode(raw.slice(start)));text.replaceWith(fragment);}$('#material-find-next',root).disabled=!found.length;$('#material-find-count',root).textContent=found.length?'':'No matches';showMatch();};
-$('#material-find',root).oninput=()=>{clearTimeout(findTimer);findTimer=setTimeout(searchMaterial,300);};
-$('#material-find-next',root).onclick=showMatch;$('#material-find-clear',root).onclick=()=>{$('#material-find',root).value='';searchMaterial();};
-$('#reading-mode',root).onclick=event=>{const on=document.body.classList.toggle('reader-focus');event.currentTarget.setAttribute('aria-pressed',String(on));event.currentTarget.textContent=on?'Exit reading mode':'Reading mode';};
-const navigationFilters=[['status','==','published'],['topicId','==',m.topicId]];
-Promise.allSettled([page('materials',{filters:[...navigationFilters,['__name__','<',m.id]],sort:'__name__',direction:'desc',size:1}),page('materials',{filters:[...navigationFilters,['__name__','>',m.id]],sort:'__name__',direction:'asc',size:1})]).then(results=>{if(!root.isConnected)return;results.forEach((result,index)=>{if(result.status==='rejected'){console.error('Material navigation unavailable',result.reason);$('#material-navigation-status',root).textContent='Other material links could not load. Use the topic page to continue.';return;}const item=result.value.items[0];if(!item)return;const link=$(index?'#next-material':'#previous-material',root);link.href='#/materials/'+encodeURIComponent(item.id);link.textContent=(index?'Next: ':'Previous: ')+item.title;link.hidden=false;});});
-$('#print-material').onclick=()=>window.print();$('#mark-material').onclick=action(async()=>{await markRead(c.user.uid,m,!isRead);isRead=!isRead;$('#mark-material').textContent=isRead?'Mark as unread':'Mark as read';toast(isRead?'Reading complete. Test your recall next.':'Marked unread. Learning history is preserved.');});$$('[data-save-flag]').forEach(b=>b.onclick=action(async()=>{const flag=b.dataset.saveFlag;await setSaved(c.user.uid,'material',m,flag,!saved[flag]);saved[flag]=!saved[flag];b.setAttribute('aria-pressed',saved[flag]);b.textContent=(saved[flag]?'✓ ':'')+{favourite:'Favourite material',revision:'Add to revision',personalImportant:'Important for me'}[flag];}));$('#material-note').onclick=action(()=>noteDialog(c,'material',m));$('#material-report').onclick=()=>reportDialog(c,'material',m);$('#material-share').onclick=action(async()=>{await navigator.clipboard.writeText(location.href);toast('Link copied.');});let timer=null,position=progress?.blockId||'',stopped=false;const savePosition=async()=>{if(stopped||!position)return;const data={materialId:m.id,materialVersion:m.version,subjectId:m.subjectId,chapterId:m.chapterId,topicId:m.topicId,level:m.level,blockId:position,read:!!isRead,lastOpenedAt:serverTimestamp()};try{await withDeadline(cache.put('reader-position:'+id,{blockId:position,version:m.version}),1500);}catch(error){console.warn('Reading-position cache unavailable; online progress can still save.',error);}if(navigator.onLine){await save(base+'/materialProgress/'+id,data);$('#position-status')&&($('#position-status').textContent='Reading position saved');}};const observer=new IntersectionObserver(entries=>{const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top);if(visible[0]){position=visible[0].target.dataset.block;clearTimeout(timer);timer=setTimeout(()=>savePosition().catch(showError),1500);}}, {rootMargin:'-10% 0px -60% 0px'});$$('[data-block]').forEach(block=>observer.observe(block));const scroll=()=>{const rect=$('#material-body').getBoundingClientRect();$('#reading-progress').style.width=Math.min(100,Math.max(0,(innerHeight-rect.top)/rect.height*100))+'%';};window.addEventListener('scroll',scroll,{passive:true});c.setCleanup(()=>{stopped=true;clearTimeout(timer);clearTimeout(findTimer);document.body.classList.remove('reader-focus');observer.disconnect();window.removeEventListener('scroll',scroll);});if(progress?.blockId&&progress.materialVersion===m.version)document.getElementById('block-'+progress.blockId)?.scrollIntoView();if(navigator.onLine)await save(base+'/learningState/current',{materialId:m.id,title:m.title,topicId:m.topicId,level:m.level,lastOpenedAt:serverTimestamp()});}
-async function noteDialog(c,kind,entity){const key=entityKey(kind,entity.id),old=await get(`users/${c.user.uid}/personalNotes/${key}`,{fresh:true});const d=modal('Personal memory cue',`<form id="entity-note" class="form"><label>Your note<textarea name="text" maxlength="10000">${esc(old?.text||'')}</textarea></label><span id="note-save-state" class="muted" role="status"></span><button class="primary">Save note</button></form>`);let noteTimer=null;const saveDraftNote=async()=>{const text=$('[name=text]',d).value;$('#note-save-state',d).textContent='Saving…';await save(`users/${c.user.uid}/personalNotes/${key}`,{kind:kind==='material'?'material_note':'question_note',entityType:kind,entityId:entity.id,materialId:kind==='material'?entity.id:null,questionId:kind==='question'?entity.id:null,subjectId:entity.subjectId,chapterId:entity.chapterId,topicId:entity.topicId,level:entity.level,text,createdAt:old?.createdAt||serverTimestamp()});$('#note-save-state',d).textContent='Saved';};$('[name=text]',d).oninput=()=>{clearTimeout(noteTimer);$('#note-save-state',d).textContent='Unsaved changes';noteTimer=setTimeout(()=>saveDraftNote().catch(error=>{$('#note-save-state',d).textContent='Save failed — use Save note to retry';showError(error);}),900);};d.addEventListener('close',()=>clearTimeout(noteTimer));$('#entity-note',d).onsubmit=action(async e=>{e.preventDefault();clearTimeout(noteTimer);await save(`users/${c.user.uid}/personalNotes/${key}`,{kind:kind==='material'?'material_note':'question_note',entityType:kind,entityId:entity.id,materialId:kind==='material'?entity.id:null,questionId:kind==='question'?entity.id:null,subjectId:entity.subjectId,chapterId:entity.chapterId,topicId:entity.topicId,level:entity.level,text:new FormData(e.currentTarget).get('text'),createdAt:old?.createdAt||serverTimestamp()});d.close();toast('Personal note saved.');});}
-function reportDialog(c,kind,entity){const d=modal('Report an issue',`<form id="entity-report" class="form">${select('Reason','reason',['Wrong Answer','Incorrect Explanation','Duplicate','Typo','Outdated','Missing Image','Other'])}<label>Details<textarea name="details" required maxlength="3000"></textarea></label><button class="primary">Send report</button></form>`);$('#entity-report',d).onsubmit=action(async e=>{e.preventDefault();await save('questionReports/'+uid(),{...Object.fromEntries(new FormData(e.currentTarget)),reporterUid:c.user.uid,entityType:kind,entityId:entity.id,questionId:kind==='question'?entity.id:null,questionVersion:entity.version,status:'pending',createdAt:serverTimestamp()});d.close();toast('Report sent.');});}
-async function saved(root,params,c){const tab=params.get('tab')||'materials',tabs=[['materials','Materials'],['questions','Questions'],['notes','Personal notes'],['important','Important'],['revision','Revision']];let cursor=null,history=[];const cat=await catalog(),chapters=await allPages('chapters',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'}),topics=await allPages('topics',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'});async function draw(){const filters=[];if(tab==='materials')filters.push(['entityType','==','material'],['favourite','==',true]);if(tab==='questions')filters.push(['entityType','==','question'],['favourite','==',true]);if(tab==='important')filters.push(['personalImportant','==',true]);if(tab==='revision')filters.push(['revision','==',true]);const old=$('#saved-filter'),values=old?Object.fromEntries(new FormData(old)):{};if(values.topicId){const t=topics.find(t=>t.id===values.topicId);if(values.chapterId&&t?.chapterId!==values.chapterId)fail('The topic does not belong to the selected chapter.');if(values.subjectId&&t?.subjectId!==values.subjectId)fail('The topic does not belong to the selected subject.');}else if(values.chapterId&&values.subjectId&&chapters.find(ch=>ch.id===values.chapterId)?.subjectId!==values.subjectId)fail('The chapter does not belong to the selected subject.');const scopeKey=values.topicId?'topicId':values.chapterId?'chapterId':values.subjectId?'subjectId':null;if(scopeKey)filters.push([scopeKey,'==',values[scopeKey]]);if(values.level)filters.push(['level','==',Number(values.level)]);const path=`users/${c.user.uid}/${tab==='notes'?'personalNotes':'savedItems'}`,p=await page(path,{filters,cursor});if(!root.isConnected)return;root.innerHTML=`<h1>Keep useful things close.</h1><p class="muted">Your personal learning shelf. Removing a saved item preserves learning history.</p><nav class="level-tabs">${tabs.map(([k,label])=>link('/saved?tab='+k,label,'btn '+(k===tab?'primary':''))).join('')}</nav><form id="saved-filter" class="filters">${select('Subject','subjectId',[['','All subjects'],...cat.subjects.map(s=>[s.id,s.title])],values.subjectId||'')}${select('Level','level',[['','All levels'],[1,'L1 Basic'],[2,'L2 Medium'],[3,'L3 Advanced']],values.level||'')}${select('Chapter','chapterId',[['','All chapters'],...chapters.map(ch=>[ch.id,ch.title])],values.chapterId||'')}${select('Topic','topicId',[['','All topics'],...topics.map(t=>[t.id,t.title])],values.topicId||'')}<button>Apply filters</button></form><div class="stack">${p.items.map(x=>`<article class="card"><div class="row between"><span class="badge">${esc(x.entityType||x.kind||'Saved item')} ${x.level?'· L'+x.level:''}</span><button data-unsave="${esc(x.id)}">Remove</button></div><h2>${esc(x.title||x.text?.slice(0,100)||x.entityId||x.questionId||'Personal note')}</h2>${x.text?`<p>${esc(x.text)}</p>`:''}<div class="row"><button data-open-saved="${esc(x.id)}" class="primary">Open</button>${tab==='notes'?`<button data-edit-note="${esc(x.id)}">Edit note</button>`:''}</div></article>`).join('')||empty('Nothing saved here yet. Add items while studying.')}</div>`;$('#saved-filter').onsubmit=action(async e=>{e.preventDefault();cursor=null;history=[];await draw();});$$('[data-open-saved]').forEach(b=>b.onclick=action(async()=>{const x=p.items.find(x=>x.id===b.dataset.openSaved);const kind=x.entityType||(x.kind==='material_note'?'material':'question'),id=x.entityId||x.materialId||x.questionId;if(kind==='material')c.go('/materials/'+encodeURIComponent(id));else{const q=await get('questions/'+id);if(!q)fail('This saved question is unavailable.');c.go('/study/'+encodeURIComponent(q.topicId)+'?q='+encodeURIComponent(q.id));}}));$$('[data-edit-note]').forEach(b=>b.onclick=action(async()=>{const x=p.items.find(x=>x.id===b.dataset.editNote),kind=x.entityType||'question',entity=await get((kind==='material'?'materials/':'questions/')+(x.entityId||x.questionId));if(!entity)fail('The linked content is unavailable.');await noteDialog(c,kind,entity);}));$$('[data-unsave]').forEach(b=>b.onclick=action(async()=>{const x=p.items.find(x=>x.id===b.dataset.unsave);if(tab==='notes'){if(!await confirmDialog('Delete this personal note?'))return;await remove(path+'/'+x.id);}else{const flag=tab==='important'?'personalImportant':tab==='revision'?'revision':'favourite';await save(path+'/'+x.id,{[flag]:false});}await draw();toast('Saved item removed. Study history was preserved.');}));pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return draw();},onPrev:()=>{cursor=history.pop();return draw();}});}await draw();}
-
-return {render,metricStrip,renderBlocks,bindMedia,noteDialog,reportDialog};
-},
-"student/review.js":async()=>{
-const {get,page,count,allPages,serverTimestamp}=await __load("services/db.js");
-const {selectedSubjects,scopeFilters,rateEntity,accessibleGet}=await __load("services/learning.js");
-const {candidates,solution,recommendationScore}=await __load("services/content.js");
-const {record,finishSession}=await __load("services/progress.js");
-const {renderBlocks,bindMedia}=await __load("student/learning.js");
-const {esc,uid,dayKey,shuffle,fail,timeText}=await __load("utils.js");
-const {$,$$,action,empty,select,field,confirmDialog,showError,skeleton}=await __load("ui/components.js");
-const {sanitize}=await __load("ui/editor.js");
-const modes=[['due','Due reviews'],['all','Revise all'],['important','Editorial important'],['personal','Important for me'],['favourite','Favourites'],['added','Added to revision'],['wrong','Incorrect answers'],['weak','Weak questions'],['recent','Recent reviews'],['random','Random'],['last-minute','Last-minute exam']];
-async function render(root,{path,params,context:c}){const subjects=await selectedSubjects(c.user.uid),ids=subjects.map(s=>s.id);if(!ids.length){if(!root.isConnected)return;root.innerHTML=empty('Choose subjects in My Subjects before revision.');return;}const [chapters,topics]=await Promise.all(['chapters','topics'].map(kind=>allPages(kind,{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'})));const examMode=path==='/exam-mode';if(!root.isConnected)return;root.innerHTML=`<div class="page-heading"><div><p class="eyebrow">REMEMBER MORE, IN LESS TIME</p><h1>${examMode?'Exam day mode':'Quick Revision'}</h1><p class="muted">Recall. Reveal. Rate honestly. Revisit later.</p></div><a class="btn" href="#${examMode?'/revision':'/exam-mode'}">${examMode?'Quick Revision':'Exam day mode'}</a></div><form id="review-config" class="card form"><div class="filters">${select('Revision source','mode',modes,examMode?'last-minute':params.get('mode')||'due')}${select('My subjects','subjectId',[['','All selected subjects'],...subjects.map(s=>[s.id,s.title])])}${select('Chapter','chapterId',[['','All chapters'],...chapters.filter(x=>ids.includes(x.subjectId)).map(x=>[x.id,x.title])])}${select('Topic','topicId',[['','All topics'],...topics.filter(x=>ids.includes(x.subjectId)).map(x=>[x.id,x.title])])}${select('Level','level',[['','All levels'],[1,'L1 Basic'],[2,'L2 Medium'],[3,'L3 Advanced']])}${select('Format','format',[['mixed','Mixed'],['summary','Short summaries'],['flashcard','Flashcards'],['qa','Question & answer']])}${field('Session items','count',20,'number','min="1" max="100" required')}${select('Duration','minutes',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes'],[0,'No timer']])}</div><button class="primary">Preview revision →</button></form><div id="review-preview" class="section"></div><div id="review-session" class="section"></div>`;
-let timer=null,items=[],index=0,rated=0,answered=0,correct=0,remaining=0,format='mixed',sessionId=uid(),startedAt=0,finishing=false,ratings={},skipped=0,nextDates=[],alive=true;const visited=new Set(),ratedIds=new Set(),skippedIds=new Set();c.setCleanup(()=>{alive=false;clearInterval(timer);});
-$('#review-config').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));format=f.format;$('#review-preview').innerHTML=skeleton();$('#review-session').innerHTML='';const scope={};for(const k of ['subjectId','chapterId','topicId'])if(f[k])scope[k]=f[k];if(f.level)scope.level=Number(f.level);const match=q=>q&&q.status==='published'&&ids.includes(q.subjectId)&&Object.entries(scope).every(([k,v])=>q[k]===v);const base=`users/${c.user.uid}`;let pool=[],available=0;const add=async(kind,id)=>{if((kind==='question'&&format==='summary')||(kind==='material'&&format==='qa'))return;const entity=await accessibleGet((kind==='material'?'materials/':'questions/')+id);if(match(entity))pool.push({kind,entity});};
-if(['due','favourite','personal','added','wrong','weak','recent'].includes(f.mode)){if(f.mode==='due'||f.mode==='recent'){const rows=await allPages(base+'/revisionSchedule',{filters:f.mode==='due'?[['nextReviewDate','<=',dayKey()]]:[],sort:f.mode==='due'?'nextReviewDate':'updatedAt',direction:f.mode==='due'?'asc':'desc'});for(const r of rows){const kind=r.entityType||(r.id.startsWith('material-')?'material':'question');await add(kind,r.entityId||(kind==='material'?r.id.slice(9):r.questionId||r.id));}}else if(['favourite','personal','added'].includes(f.mode)){const flag={favourite:'favourite',personal:'personalImportant',added:'revision'}[f.mode];const rows=await allPages(base+'/savedItems',{filters:[[flag,'==',true]]});for(const r of rows)await add(r.entityType,r.entityId);}else{const rows=await allPages(base+'/questionProgress',{filters:[['wrong','>',0]],sort:'wrong'});for(const r of rows.filter(r=>f.mode==='weak'?r.attempts&&r.correct/r.attempts<.6:r.lastAnswerCorrect!==true))await add('question',r.id);}pool=[...new Map(pool.map(x=>[x.kind+'-'+x.entity.id,x])).values()];available=pool.length;}else{for(const subjectId of (scope.subjectId?[scope.subjectId]:ids)){const fs=scopeFilters({...scope,subjectId});if(f.mode==='important')fs.push(['importance','==','high']);if(format!=='summary'){available+=await count('questions',[['status','==','published'],...fs]);if(pool.length<200)pool.push(...(await candidates(fs,Math.min(100,200-pool.length))).map(entity=>({kind:'question',entity})));}if(format!=='qa'){available+=await count('materials',[['status','==','published'],...fs]);let cursor=null;do{const p=await page('materials',{filters:[['status','==','published'],...fs],cursor});pool.push(...p.items.map(entity=>({kind:'material',entity})));cursor=p.hasNext?p.cursor:null;}while(cursor&&pool.length<200);}}}
-if(f.mode==='last-minute'){const progress=await allPages(base+'/questionProgress'),pm=Object.fromEntries(progress.map(x=>[x.id,x]));pool.sort((a,b)=>recommendationScore(b.entity,pm[b.entity.id])-recommendationScore(a.entity,pm[a.entity.id]));}else if(f.mode!=='due')pool=shuffle(pool);items=pool.slice(0,Number(f.count));$('#review-preview').innerHTML=`<section class="card"><h2>Your revision preview</h2><p><b>${available}</b> matching accessible items.</p><p>Session: <b>${items.length}</b> items · ${esc(format)} · ${Number(f.minutes)?f.minutes+' minutes':'untimed'}</p>${items.length<Number(f.count)?'<p class="notice-inline">Fewer eligible items are available than requested. Confirm the actual session size shown above.</p>':''}${pool.length<available?'<p class="muted">The session samples bounded candidate pages to limit database reads.</p>':''}${items.length?'<button id="start-review" class="primary">Start this revision</button>':empty('No matching items. Change filters or add items while studying.')}</section>`;if($('#start-review'))$('#start-review').onclick=action(async()=>{index=0;rated=0;answered=0;correct=0;skipped=0;finishing=false;nextDates=[];visited.clear();ratedIds.clear();skippedIds.clear();ratings={again:0,hard:0,good:0,easy:0};sessionId=uid();startedAt=Date.now();remaining=Number(f.minutes)*60;$('#review-config').hidden=true;$('#review-preview').hidden=true;document.body.classList.add('exam-focus');if(remaining)timer=setInterval(()=>{remaining--;if($('#review-time'))$('#review-time').textContent=timeText(remaining);if(remaining<=0){clearInterval(timer);finish().catch(showError);}},1000);await draw();});});
-async function draw(){if(!alive)return;let selectedOption=null,revealed=false;const {kind,entity:q}=items[index],key=kind+'-'+q.id;$('#review-session').innerHTML=`<article class="card revision-summary"><div class="row between"><span class="badge">${index+1} / ${items.length} · ${kind} · L${q.level}</span><b id="review-time">${remaining?timeText(remaining):'Untimed'}</b><button id="review-end">End session</button></div><h2 class="question">${esc(q.title||q.questionText)}</h2>${kind==='question'&&format!=='flashcard'?`<div class="options">${q.options.map((o,i)=>`<button class="option" data-review-choice="${i}">${String.fromCharCode(65+i)}. ${esc(o)}</button>`).join('')}</div>`:''}${kind==='material'&&format==='summary'?`<div class="note-body">${renderBlocks(q.blocks.filter(b=>['heading','summary','facts','tips'].includes(b.type)))||'<p>Reveal to review the explanation.</p>'}</div>`:''}<button id="review-reveal" class="primary">${kind==='question'?'Reveal answer':'Reveal explanation'}</button><div id="review-answer"></div><div id="review-ratings" class="row section" hidden>${['again','hard','good','easy'].map(r=>`<button data-review-rating="${r}" ${ratedIds.has(key)?'disabled':''}>${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div><div class="row between section"><button id="review-prev" ${index===0?'disabled':''}>Previous</button><button id="review-skip">Skip / next</button></div><p class="muted">Self-rated recall is separate from tested correctness. Each item earns credit only once per session.</p></article>`;$$('[data-review-choice]').forEach(b=>b.onclick=()=>{if(revealed)return;selectedOption=Number(b.dataset.reviewChoice);$$('[data-review-choice]').forEach(x=>x.classList.toggle('selected',x===b));});$('#review-reveal').onclick=action(async()=>{if(revealed)return;if(kind==='question'){const s=await solution(q);if(!s)fail('A solution is unavailable.');if(selectedOption!==null&&!visited.has(key)){await record(c.user.uid,q,{type:'answer',selectedOption,correct:selectedOption===s.correctOption,sessionId,eventId:sessionId+'-'+q.id});answered++;if(selectedOption===s.correctOption)correct++;}$('#review-answer').innerHTML=`<div class="answer"><b>${esc(q.options[s.correctOption])}</b>${sanitize(s.explanationHtml)}<p>${esc(s.memoryTrick||'')}</p></div>`;}else{$('#review-answer').innerHTML=`<div class="note-body">${renderBlocks(q.blocks)}</div>`;bindMedia($('#review-answer'));}visited.add(key);revealed=true;$('#review-ratings').hidden=false;$('#review-reveal').hidden=true;});$$('[data-review-rating]').forEach(b=>b.onclick=action(async()=>{if(!revealed||ratedIds.has(key))return;await rateEntity(c.user.uid,kind,q,b.dataset.reviewRating,sessionId);ratedIds.add(key);ratings[b.dataset.reviewRating]++;rated++;const s=await get(`users/${c.user.uid}/revisionSchedule/${kind==='question'?q.id:'material-'+q.id}`,{fresh:true});if(s?.nextReviewDate)nextDates.push(s.nextReviewDate);await next();}));$('#review-skip').onclick=action(async()=>{if(!ratedIds.has(key))skippedIds.add(key);skipped=skippedIds.size;await next();});$('#review-prev').onclick=action(async()=>{index--;await draw();});$('#review-end').onclick=action(async()=>{if(await confirmDialog('End this session and save a partial recap?'))await finish();});}
-async function next(){if(index<items.length-1){index++;await draw();}else await finish();}
-async function finish(){if(finishing)return;finishing=true;clearInterval(timer);try{await finishSession(c.user.uid,sessionId,{mode:examMode?'exam-mode':'revision',scope:{format},startedAt:new Date(startedAt),activeSeconds:Math.max(0,Math.round((Date.now()-startedAt)/1000)),viewed:visited.size,attempted:answered,correct,rated});}catch(error){finishing=false;throw error;}if(!alive)return;document.body.classList.remove('exam-focus');$('#review-session').innerHTML=`<section class="card revision-summary"><span class="badge">SESSION RECAP</span><h1>A useful step forward.</h1><p>${rated} ratings · ${answered} tested answers · ${skipped} skips</p><p>${answered?Math.round(correct/answered*100)+'% answer accuracy':'No submitted answers; accuracy is not assessed.'}</p><div class="grid four">${Object.entries(ratings).map(([r,n])=>`<div><small>${esc(r)}</small><h2>${n}</h2></div>`).join('')}</div><p>Next review: ${nextDates.length?nextDates.sort()[0]:'No reviews scheduled'}</p><div class="row"><a class="btn primary" href="#/">Back to dashboard</a><a class="btn" href="#/revision">Build another revision</a></div></section>`;}
-}
-
-return {render};
-},
-"student/revision.js":async()=>{
-const {get,page,save,serverTimestamp}=await __load("services/db.js");
-const {candidates,solution,recommendationScore}=await __load("services/content.js");
-const {record,finishSession}=await __load("services/progress.js");
-const {esc,uid,dayKey,asDate,fail,shuffle,timeText}=await __load("utils.js");
-const {$,$$,action,toast,select,field,empty,skeleton,showError}=await __load("ui/components.js");
-const {sanitize}=await __load("ui/editor.js");
-const modes=[['due','Due (SRS)'],['important','Most important'],['wrong','Wrong answers'],['difficult','Difficult'],['bookmarked','Bookmarked'],['not_learned','Not learned'],['recent','Recent'],['random','Random'],['topic','Topic-wise'],['level','Level-wise'],['last-minute','Last-minute exam']];
-async function render(root,{path,params,context:c}){const examMode=path==='/exam-mode';let timer,secondsLeft=0;const startTime=Date.now();let items=[],index=0,revealed=false,reviewed=0,selected=null,correct=0,sessionId=uid();c.setCleanup(()=>clearInterval(timer));if(!root.isConnected)return;root.innerHTML=`<div class="row between"><h1>${examMode?'Exam day mode':'Quick revision'}</h1><a class="btn" href="#${examMode?'/revision':'/exam-mode'}">${examMode?'Quick revision':'Exam day mode'}</a></div><p class="muted">Recall first. Reveal the answer. Rate how well you remembered.</p><form id="revision-config" class="card form"><div class="filters">${select('Mode','mode',modes,examMode?'last-minute':params.get('mode')||'due')}${field('Exam ID','examId',c.profile.targetExamId||'')}${field('Subject ID','subjectId')}${field('Chapter ID','chapterId')}${field('Topic ID','topicId')}${select('Level','level',[['','All'],[1,'L1'],[2,'L2'],[3,'L3']])}${select('Minimum importance','importance',[['low','All'],['medium','Medium'],['high','High']])}${field('Question count','count',20,'number','min="1" max="100" required')}${select('Duration','minutes',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes'],[0,'No timer']])}</div><button class="primary">Build revision session</button></form><div id="revision-session" class="section"></div>`;
- $('#revision-config').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));const filters=[];for(const k of ['examId','subjectId','chapterId','topicId'])if(f[k])filters.push([k,'==',f[k]]);if(f.level)filters.push(['level','==',Number(f.level)]);if(f.importance==='high')filters.push(['importance','==','high']);else if(f.importance==='medium')filters.push(['importance','in',['medium','high']]);const out=$('#revision-session');out.innerHTML=skeleton();const base=`users/${c.user.uid}`;const sourceMap={due:['revisionSchedule',[['nextReviewDate','<=',dayKey()]],'nextReviewDate'],bookmarked:['bookmarks',[],'updatedAt'],wrong:['questionProgress',[['wrong','>',0]],'wrong'],difficult:['questionProgress',[['personalDifficulty','==','difficult']],'updatedAt'],not_learned:['questionProgress',[['learningFlag','==','not_learned']],'updatedAt'],recent:['questionProgress',[],'updatedAt']};let source=[];if(sourceMap[f.mode]){const [collection,fs,sort]=sourceMap[f.mode];let cursor=null;do{const p=await page(base+'/'+collection,{filters:fs,sort,direction:f.mode==='due'?'asc':'desc',cursor});source.push(...p.items);cursor=p.hasNext?p.cursor:null;}while(cursor&&source.length<200);items=(await Promise.all(source.map(p=>get('questions/'+(p.questionId||p.id))))).filter(Boolean).filter(q=>q.status==='published'&&filters.every(([k,op,v])=>op==='in'?v.includes(q[k]):q[k]===v));}else items=await candidates(filters,160);
- if(f.mode==='important')items=items.filter(q=>q.importance==='high');if(f.mode==='last-minute'){const p=await page(base+'/questionProgress'),s=await page(base+'/revisionSchedule');const pm=Object.fromEntries(p.items.map(x=>[x.id,x])),sm=Object.fromEntries(s.items.map(x=>[x.id,x]));items.sort((a,b)=>recommendationScore(b,pm[b.id],sm[b.id])-recommendationScore(a,pm[a.id],sm[a.id]));}else if(f.mode==='random')items=shuffle(items);items=items.slice(0,Number(f.count));if(!items.length){out.innerHTML=empty('No questions match this revision mode and filters.');return;}index=0;reviewed=0;correct=0;let seconds=Number(f.minutes)*60;secondsLeft=seconds;clearInterval(timer);if(seconds)timer=setInterval(()=>{seconds--;secondsLeft=seconds;if($('#revision-time'))$('#revision-time').textContent=timeText(seconds);if(seconds<=0){clearInterval(timer);finish().catch(showError);}},1000);if(examMode)document.body.classList.add('exam-focus');await draw(seconds);});
- async function draw(seconds=secondsLeft){const q=items[index];revealed=false;selected=null;$('#revision-session').innerHTML=`<article class="card"><div class="row between"><span class="badge">${index+1} / ${items.length} · L${q.level} · ${esc(q.importance)}</span><b id="revision-time">${seconds?timeText(seconds):''}</b><button id="end">End session</button></div><h2 class="question">${esc(q.questionText)}</h2><div class="options">${q.options.map((x,i)=>`<button data-choice="${i}" class="option">${String.fromCharCode(65+i)}. ${esc(x)}</button>`).join('')}</div><button id="rev-reveal" class="primary">Reveal answer</button><div id="rev-answer"></div><div id="ratings" class="row section" hidden>${['again','hard','good','easy'].map(x=>`<button data-rating="${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div></article>`;$$('[data-choice]').forEach(b=>b.onclick=()=>{if(revealed)return;selected=Number(b.dataset.choice);$$('[data-choice]').forEach(x=>x.classList.toggle('selected',x===b));});$('#rev-reveal').onclick=action(async()=>{const s=await solution(q);if(!s)fail('Answer unavailable.');revealed=true;await record(c.user.uid,q,{type:'reveal',sessionId});if(selected!==null){await record(c.user.uid,q,{type:'answer',selectedOption:selected,correct:selected===s.correctOption,sessionId});if(selected===s.correctOption)correct++;}$('#rev-answer').innerHTML=`<div class="answer"><b>${esc(q.options[s.correctOption])}</b>${sanitize(s.explanationHtml)}<p>${esc(s.memoryTrick||'')}</p></div>`;$('#ratings').hidden=false;$('#rev-reveal').disabled=true;});$$('[data-rating]').forEach(b=>b.onclick=action(async()=>{if(!revealed)return;await record(c.user.uid,q,{type:'rating',rating:b.dataset.rating,sessionId});reviewed++;if(index<items.length-1){index++;await draw();}else await finish();}));$('#end').onclick=action(finish);}
- async function finish(){clearInterval(timer);await finishSession(c.user.uid,sessionId,{mode:examMode?'exam-mode':'revision',scope:{},startedAt:new Date(startTime),activeSeconds:Math.round((Date.now()-startTime)/1000),viewed:index+1,attempted:reviewed,correct,rated:reviewed});$('#revision-session').innerHTML=`<div class="card"><h2>Revision complete</h2><p>${reviewed} cards rated · ${correct} answers correct</p><a class="btn primary" href="#/">Back to dashboard</a></div>`;document.body.classList.remove('exam-focus');}
-}
-
-return {render};
-},
-"student/study.js":async()=>{
-const {get,page,count,save,serverTimestamp}=await __load("services/db.js");
-const {hierarchy,questionPage,solution}=await __load("services/content.js");
-const {record,bookmark,personalNote,finishSession}=await __load("services/progress.js");
-const {esc,uid,validateQuestion,dayKey,pct,fail,debounce}=await __load("utils.js");
-const {$,$$,action,toast,empty,select,field,modal,pager,skeleton,confirmDialog,showError}=await __load("ui/components.js");
-const {sanitize}=await __load("ui/editor.js");
-const {setSaved,savedState}=await __load("services/learning.js");
-async function render(root,{path,params,context}){if(path.startsWith('/notes/'))return notes(root,decodeURIComponent(path.split('/')[2]),context);if(params.get('question')){const q=await get('questions/'+params.get('question'));if(!q)fail('Question not found.');context.go('/study/'+encodeURIComponent(q.topicId)+'?q='+encodeURIComponent(q.id));return;}if(path.startsWith('/study/'))return study(root,decodeURIComponent(path.split('/')[2]),params,context);return browse(root,params,context);}
-async function browse(root,params,c){const kind=params.get('kind')||'exams',parent=params.get('parent'),map={exams:['subjects','examId'],subjects:['chapters','subjectId'],chapters:['topics','chapterId']};if(!['exams','subjects','chapters','topics'].includes(kind))fail('Invalid syllabus route.');let cursor=null,history=[];async function draw(){const parentField={subjects:'examId',chapters:'subjectId',topics:'chapterId'}[kind];const p=await hierarchy(kind,parent&&parentField?[[parentField,'==',parent]]:[]);if(!root.isConnected)return;root.innerHTML=`<div class="breadcrumbs"><a href="#/study">Study</a> / ${esc(kind)}</div><h1>Build your knowledge, one topic at a time</h1><p class="muted">Choose your ${esc(kind)}. Every topic has three independent difficulty levels.</p><div class="grid three">${p.items.map(x=>`<article class="card topic-card"><span class="badge">${esc(kind)}</span><h2>${esc(x.title)}</h2><p class="muted">${esc(x.description||'')}</p><div class="row"><a class="btn primary" href="#${kind==='topics'?'/study/'+encodeURIComponent(x.id):'/study?kind='+map[kind][0]+'&parent='+encodeURIComponent(x.id)}">${kind==='topics'?'Open topic':'Explore'}</a>${kind==='chapters'?`<a class="btn" href="#/notes/${encodeURIComponent(x.id)}">Read notes</a>`:''}</div></article>`).join('')||empty('No published syllabus here yet. An administrator can add content.')}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:async()=>{history.push(cursor);cursor=p.cursor;return drawPage();},onPrev:async()=>{cursor=history.pop();return drawPage();}});}
- // Keep the same renderer while passing the current cursor to the hierarchy query.
- async function drawPage(){const parentField={subjects:'examId',chapters:'subjectId',topics:'chapterId'}[kind];const p=await page(kind,{filters:[['status','==','published'],...(parent&&parentField?[[parentField,'==',parent]]:[])],sort:'sortOrder',direction:'asc',cursor});if(!root.isConnected)return;root.innerHTML=`<div class="breadcrumbs"><a href="#/study">Study</a> / ${esc(kind)}</div><h1>${esc(kind[0].toUpperCase()+kind.slice(1))}</h1><div class="grid three">${p.items.map(x=>`<div class="card"><h2>${esc(x.title)}</h2><p>${esc(x.description||'')}</p><a class="btn primary" href="#${kind==='topics'?'/study/'+encodeURIComponent(x.id):'/study?kind='+map[kind][0]+'&parent='+encodeURIComponent(x.id)}">Explore</a>${kind==='chapters'?` <a href="#/notes/${encodeURIComponent(x.id)}">Notes</a>`:''}</div>`).join('')||empty()}</div>`;pager(root,{hasNext:p.hasNext,hasPrev:history.length>0,onNext:()=>{history.push(cursor);cursor=p.cursor;return drawPage();},onPrev:()=>{cursor=history.pop();return drawPage();}});}await draw();}
-async function study(root,topicId,params,c){const topic=await get('topics/'+topicId);if(!topic)fail('Topic was not found.');const base=`users/${c.user.uid}`,sessionId=uid();let level=Number(params.get('level')||1),cursor=null,history=[],items=[],index=0,nextCursor=null,hasNext=false,selected=null,revealed=false,flash=false,showTimer=false;let clock=0;const started=Date.now();let viewed=0,answered=0,correct=0;const timer=setInterval(()=>{clock++;if($('#study-time'))$('#study-time').textContent=Math.floor(clock/60)+':'+String(clock%60).padStart(2,'0');},1000);c.setCleanup(()=>{clearInterval(timer);document.removeEventListener('keydown',keys);});
- const deep=params.get('q');if(deep){const q=await get('questions/'+deep);if(q&&q.topicId===topicId){level=q.level;items=[q];}else fail('Question was not found in this topic.');}
- async function loadPage(){if(!root.isConnected)return;root.innerHTML=skeleton();const p=await questionPage([['topicId','==',topicId],['level','==',level]],cursor);items=p.items;nextCursor=p.cursor;hasNext=p.hasNext;index=0;await draw();}
- async function draw(){const q=items[index];selected=null;revealed=false;const counts=navigator.onLine?await Promise.all([count('questions',[['status','==','published'],['topicId','==',topicId],['level','==',level]]),count(base+'/questionProgress',[['topicId','==',topicId],['level','==',level],['masteryState','==','mastered']])]):[items.length,0];if(!root.isConnected)return;root.innerHTML=`<div class="breadcrumbs"><a href="#/study">Study</a> / <a href="#/notes/${esc(topic.chapterId)}">Chapter notes</a> / ${esc(topic.title)}</div><div class="row between"><h1>${esc(topic.title)}</h1><button id="finish-study">Finish session</button></div><div class="level-tabs">${[1,2,3].map(l=>`<button data-level="${l}" class="${l===level?'active':''}">L${l} · ${['Basic','Medium','Hard'][l-1]}</button>`).join('')}<a class="btn" href="#/tests?topic=${encodeURIComponent(topicId)}&level=${level}">Start level test</a></div><p class="muted">${navigator.onLine?`${counts[0]} questions · ${counts[1]} mastered · ${counts[0]-counts[1]} not mastered`:'Offline · cached page only · progress changes unavailable'}</p>${!q?empty('No published questions at this level.'):`<article class="card"><div class="row between"><div class="row"><span class="badge">L${q.level}</span><span class="badge ${esc(q.importance)}">${esc(q.importance)} importance</span><span class="badge">${esc(q.verification)}</span></div><div class="row font-controls"><button id="font-down" aria-label="Smaller text">A−</button><button id="font-up" aria-label="Larger text">A+</button></div></div><p class="muted">${esc(q.id)} · ${index+1} on this page</p><div class="question">${esc(q.questionText)}</div>${q.imageUrl?`<img src="${esc(q.imageUrl)}" alt="${esc(q.imageAlt||'Question illustration')}" loading="lazy">`:''}<div class="options" id="options" ${flash?'hidden':''}>${q.options.map((o,i)=>`<button class="option" data-option="${i}"><b>${String.fromCharCode(65+i)}.</b> ${esc(o)}</button>`).join('')}</div><div class="row"><button id="reveal" class="primary">Show answer</button><button id="bookmark">Favourite</button><button id="question-revision">Add to revision</button><button id="question-important">Important for me</button><button id="flash">${flash?'MCQ mode':'Flashcard mode'}</button><button id="toggle-timer">Timer</button><span id="study-time" ${showTimer?'':'hidden'}></span></div><div id="answer"></div><hr><div class="row"><button data-flag="learned">Learned</button><button data-flag="difficult">Difficult</button><button data-flag="not_learned">Not learned</button></div><label class="section">Personal note<textarea id="personal" maxlength="10000" placeholder="Your memory cue…"></textarea></label><button id="save-note">Save note</button><div class="row section"><button id="report">Report issue</button><button id="copy">Copy</button><button id="share">Share link</button></div></article><div class="row between section"><button id="previous" ${index===0&&!history.length?'disabled':''}>← Previous</button><span>${index+1} / ${items.length} on page</span><button id="next" ${index===items.length-1&&!hasNext?'disabled':''}>Next →</button></div>`}`;
- $$('[data-level]',root).forEach(b=>b.onclick=action(async()=>{level=Number(b.dataset.level);cursor=null;history=[];await loadPage();}));$('#finish-study').onclick=action(async()=>{await finishSession(c.user.uid,sessionId,{mode:'study',scope:{topicId,level},startedAt:new Date(started),activeSeconds:clock,viewed,attempted:answered,correct});toast(`Session saved: ${viewed} viewed, ${answered} attempted, ${correct} correct.`);c.go('/');});if(!q)return;
- const [bm,note]=await Promise.all([get(base+'/bookmarks/'+q.id,{fresh:true}),get(base+'/personalNotes/question-'+q.id,{fresh:true})]);if(!root.isConnected)return;let bookmarked=!!bm;$('#bookmark').textContent=bookmarked?'Bookmarked':'Bookmark';$('#personal').value=note?.text||'';if(navigator.onLine)await record(c.user.uid,q,{sessionId});viewed++;if(!navigator.onLine)toast('Cached reading only. Reconnect to save progress.');
- $$('[data-option]',root).forEach(b=>b.onclick=()=>{if(revealed)return;selected=Number(b.dataset.option);$$('[data-option]',root).forEach(x=>x.classList.toggle('selected',x===b));});$('#reveal').onclick=action(async()=>{if(revealed){$('#answer').hidden=!$('#answer').hidden;$('#reveal').textContent=$('#answer').hidden?'Show answer':'Hide answer';return;}const s=await solution(q);if(!s)fail('The answer is unavailable. Please report this question.');if(navigator.onLine)await record(c.user.uid,q,{type:'reveal',sessionId});if(selected!==null&&navigator.onLine){await record(c.user.uid,q,{type:'answer',correct:selected===s.correctOption,selectedOption:selected,sessionId});answered++;if(selected===s.correctOption)correct++;}revealed=true;$('#answer').innerHTML=`<div class="answer"><b>Answer: ${esc(q.options[s.correctOption])}</b><div>${sanitize(s.explanationHtml||'')}</div>${s.memoryTrick?`<p><b>Memory trick:</b> ${esc(s.memoryTrick)}</p>`:''}<p class="muted">Source: ${esc(q.source?.title||q.source||'Not provided')}</p></div>`;$('#reveal').textContent='Hide answer';$$('[data-option]',root).forEach(b=>b.classList.toggle('correct',Number(b.dataset.option)===s.correctOption));});$('#bookmark').onclick=action(async()=>{await setSaved(c.user.uid,'question',q,'favourite',!bookmarked);bookmarked=!bookmarked;$('#bookmark').textContent=bookmarked?'Bookmarked':'Bookmark';});$$('[data-flag]',root).forEach(b=>b.onclick=action(async()=>{await record(c.user.uid,q,{type:'flag',flag:b.dataset.flag,sessionId});toast('Learning status saved.');}));$('#save-note').onclick=action(async()=>{await personalNote(c.user.uid,q.id,$('#personal').value);toast('Personal note saved.');});const marks=await savedState(c.user.uid,'question',q.id);for(const [selector,flag,label] of [['#question-revision','revision','Add to revision'],['#question-important','personalImportant','Important for me']]){$(selector).setAttribute('aria-pressed',!!marks[flag]);$(selector).textContent=(marks[flag]?'✓ ':'')+label;$(selector).onclick=action(async()=>{await setSaved(c.user.uid,'question',q,flag,!marks[flag]);marks[flag]=!marks[flag];$(selector).setAttribute('aria-pressed',marks[flag]);$(selector).textContent=(marks[flag]?'✓ ':'')+label;});}$('#flash').onclick=()=>{flash=!flash;$('#options').hidden=flash;$('#flash').textContent=flash?'MCQ mode':'Flashcard mode';};$('#toggle-timer').onclick=()=>{showTimer=!showTimer;$('#study-time').hidden=!showTimer;};$('#font-down').onclick=()=>font(-1);$('#font-up').onclick=()=>font(1);$('#copy').onclick=action(async()=>{await navigator.clipboard.writeText(q.questionText+'\n'+q.options.map((x,i)=>String.fromCharCode(65+i)+'. '+x).join('\n'));toast('Copied.');});$('#share').onclick=action(async()=>{const url=new URL(location.href);url.hash='/study/'+encodeURIComponent(topicId)+'?q='+encodeURIComponent(q.id);await navigator.clipboard.writeText(url.href);toast('Question link copied.');});$('#report').onclick=()=>report(q,c);$('#previous').onclick=action(async()=>{if(index>0){index--;await draw();}else{cursor=history.pop();await loadPage();index=items.length-1;await draw();}});$('#next').onclick=action(async()=>{if(index<items.length-1){index++;await draw();}else{history.push(cursor);cursor=nextCursor;await loadPage();}});
- }
- function keys(e){if(e.target.closest('input,textarea,select,[contenteditable]')||document.querySelector('dialog'))return;const key=e.key.toLowerCase(),map={j:'#next',k:'#previous',b:'#bookmark',' ':'#reveal'};if(map[key]){e.preventDefault();$(map[key])?.click();}if(/^[1-6]$/.test(key))$(`[data-option="${Number(key)-1}"]`)?.click();}document.addEventListener('keydown',keys);if(items.length)await draw();else await loadPage();}
-function font(delta){const old=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--reader'))||18;const value=Math.min(26,Math.max(14,old+delta));document.documentElement.style.setProperty('--reader',value+'px');localStorage.setItem('sajilo-font',value);}
-function report(q,c){const d=modal('Report question',`<form class="form" id="report-form">${select('Reason','reason',['Wrong Answer','Incorrect Explanation','Duplicate','Typo','Outdated','Missing Image','Other'])}<label>Details<textarea name="details" maxlength="3000" required></textarea></label><button class="primary">Send report</button></form>`);$('#report-form',d).onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));await save('questionReports/'+uid(),{...f,reporterUid:c.user.uid,questionId:q.id,questionVersion:q.version,status:'pending',createdAt:serverTimestamp()});d.close();toast('Report sent. Thank you.');});}
-async function notes(root,chapterId,c){const [note,chapter]=await Promise.all([get('notes/'+chapterId),get('chapters/'+chapterId)]);if(!note||note.status!=='published')fail('Published notes are not available for this chapter.');const siblings=await page('chapters',{filters:[['status','==','published'],['subjectId','==',chapter.subjectId]],sort:'sortOrder',direction:'asc'});if(!root.isConnected)return;root.innerHTML=`<div class="reading-progress" id="reading-progress"></div><div class="breadcrumbs"><a href="#/study">Study</a> / ${esc(chapter.title)}</div><div class="row between"><h1>${esc(note.title)}</h1><span class="badge">${Math.max(1,Math.ceil((note.wordCount||note.contentHtml.split(/\s+/).length)/180))} min read</span></div><div class="row no-print"><button data-font="16">S</button><button data-font="18">M</button><button data-font="20">L</button><button id="print-notes">Print / PDF</button><button id="fullscreen">Reading mode</button><button id="mark-read">Mark as read</button><button id="save-highlight">Save selection</button></div><label class="section no-print">Search within notes<input id="note-search" placeholder="Find text"></label><div class="note-layout section"><aside class="card toc no-print" id="toc"></aside><article class="card note-body" id="note-body"><div id="note-content">${sanitize(note.contentHtml)}</div>${[['Key Facts',note.keyFacts],['Common Mistakes',note.commonMistakes],['Exam Tips',note.examTips]].map(([title,values])=>values?.length?`<section class="factbox"><h2>${title}</h2><ul>${values.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'').join('')}</article></div><div class="row section no-print"><a class="btn primary" href="#/tests?chapter=${encodeURIComponent(chapterId)}">Practice this chapter</a><button id="certificate">Print reading certificate</button></div><div class="row section no-print" id="chapter-nav"></div>`;
- const noteBody=$('#note-body'),content=$('#note-content'),original=content.innerHTML;let savedSelection='';noteBody.addEventListener('mouseup',()=>{const s=window.getSelection();if(s?.anchorNode&&noteBody.contains(s.anchorNode))savedSelection=s.toString();});const generateToc=()=>{$('#toc').innerHTML='<b>On this page</b>'+$$('h2,h3',noteBody).map((h,i)=>{h.id='heading-'+i;return `<a href="#heading-${i}" data-heading="heading-${i}">${esc(h.textContent)}</a>`;}).join('');$$('[data-heading]').forEach(a=>a.onclick=e=>{e.preventDefault();document.getElementById(a.dataset.heading).scrollIntoView({behavior:'smooth'});});};generateToc();let reading=0;const onScroll=()=>{const rect=noteBody.getBoundingClientRect();reading=Math.min(100,Math.max(0,Math.round((innerHeight-rect.top)/Math.max(1,rect.height)*100)));$('#reading-progress').style.width=reading+'%';};window.addEventListener('scroll',onScroll,{passive:true});c.setCleanup(()=>{window.removeEventListener('scroll',onScroll);$('#reading-progress')?.remove();});onScroll();$$('[data-font]',root).forEach(b=>b.onclick=()=>document.documentElement.style.setProperty('--reader',b.dataset.font+'px'));$('#print-notes').onclick=()=>window.print();$('#fullscreen').onclick=action(async()=>{if(document.fullscreenElement)await document.exitFullscreen();else await noteBody.requestFullscreen();});$('#mark-read').onclick=action(async()=>{await save(`users/${c.user.uid}/chapterProgress/${chapterId}`,{title:note.title,noteVersion:note.version,readingPercent:100,readAt:serverTimestamp(),lastOpenedAt:serverTimestamp()});toast('Chapter marked as read.');});$('#save-highlight').onclick=action(async()=>{if(!savedSelection.trim())fail('Select text inside the notes first.');await save(`users/${c.user.uid}/personalNotes/${uid()}`,{kind:'chapter_highlight',chapterId,noteVersion:note.version,text:savedSelection,selectedText:savedSelection,createdAt:serverTimestamp()});toast('Selected text saved to your personal highlights.');});$('#note-search').oninput=debounce(()=>{content.innerHTML=original;const term=$('#note-search').value.trim();if(term){const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);for(const node of nodes){const text=node.textContent,index=text.toLocaleLowerCase().indexOf(term.toLocaleLowerCase());if(index>=0){const frag=document.createDocumentFragment();frag.append(text.slice(0,index));const mark=document.createElement('mark');mark.textContent=text.slice(index,index+term.length);frag.append(mark,text.slice(index+term.length));node.replaceWith(frag);}}}generateToc();});const i=siblings.items.findIndex(x=>x.id===chapterId);$('#chapter-nav').innerHTML=[siblings.items[i-1],siblings.items[i+1]].filter(Boolean).map(x=>`<a class="btn" href="#/notes/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join('');$('#certificate').onclick=action(async()=>{const p=await get(`users/${c.user.uid}/chapterProgress/${chapterId}`,{fresh:true});if(!p?.readAt)fail('Mark this chapter as read before printing a reading certificate.');const d=modal('Chapter reading certificate',`<div class="card"><h1>Sajilo GK</h1><h2>Chapter Reading Completion</h2><p>${esc(c.profile.displayName)} completed reading ${esc(chapter.title)}.</p><p>${dayKey()} · This acknowledges reading, not examination certification.</p><button id="print-cert">Print / PDF</button></div>`);$('#print-cert',d).onclick=()=>window.print();});if(navigator.onLine)await save(`users/${c.user.uid}/chapterProgress/${chapterId}`,{title:note.title,noteVersion:note.version,lastOpenedAt:serverTimestamp()});}
-
-return {render};
-},
-"student/tests.js":async()=>{
-const {logout}=await __load("auth.js");
-const {get,page,count,save,serverTimestamp,cache,allPages}=await __load("services/db.js");
-const {candidates,mixQuestions,solution}=await __load("services/content.js");
-const {createAttempt,loadAttempt,saveAnswers,submitAttempt,persistDraft,persistGradingSnapshots}=await __load("services/exams.js");
-const {record}=await __load("services/progress.js");
-const {esc,uid,pct,fail,asDate,timeText,dayKey,addDays,displayDate,debounce}=await __load("utils.js");
-const {$,$$,action,toast,empty,select,field,modal,pager,confirmDialog,showError,skeleton}=await __load("ui/components.js");
-const {line,heatmap,ring}=await __load("ui/charts.js");
-const {sanitize}=await __load("ui/editor.js");
-const {catalog,setSaved,selectedSubjects,metrics,aggregateMetrics}=await __load("services/learning.js");
-async function render(root,args){const {path,params,context:c}=args;if(path==='/progress')return analytics(root,c);if(path.startsWith('/results/'))return results(root,decodeURIComponent(path.split('/')[2]),c);if(path.startsWith('/tests/')){const id=decodeURIComponent(path.split('/')[2]);const attempt=await get(`users/${c.user.uid}/testAttempts/${id}`,{fresh:true});if(attempt)return exam(root,id,c);const mock=await get('mockTests/'+id),test=mock||await get('testSets/'+id);if(test)test._collection=mock?'mockTests':'testSets';if(!test)fail('Test not found.');return startPublished(test,c);}return list(root,params,c);}
-async function list(root,params,c){const [cat,chosenSubjects,allChapters,allTopics]=await Promise.all([catalog(),selectedSubjects(c.user.uid),allPages('chapters',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'}),allPages('topics',{filters:[['status','==','published']],sort:'sortOrder',direction:'asc'})]);const [sets,mocks,attempts]=await Promise.all([page('testSets',{filters:[['status','==','published']]}),page('mockTests',{filters:[['status','==','published']]}),page(`users/${c.user.uid}/testAttempts`)]);if(!root.isConnected)return;root.innerHTML=`<h1>Practice with purpose</h1><p class="muted">Choose a level or build a balanced test from your syllabus.</p><div class="grid three">${[['basic','L1 Basic'],['medium','L2 Medium'],['hard','L3 Hard'],['important','Important only'],['mixed','Mixed levels'],['speed','Speed · 20Q / 10min'],['full','Full · 50Q'],['pyq','Previous year questions'],['wrong','Retry wrong']].map(([kind,title])=>`<button class="card" data-kind="${kind}"><h3>${title}</h3></button>`).join('')}</div><section class="card section"><h2>Smart practice builder</h2><form id="test-config" class="form"><div class="filters">${select('Examination','examId',[['','Selected subject syllabus'],...cat.exams.map(e=>[e.id,e.title])])}${select('Subject','subjectId',[['','All My Subjects'],...chosenSubjects.map(s=>[s.id,s.title])],params.get('subject')||'')}${select('Chapter','chapterId',[['','All chapters'],...allChapters.filter(ch=>chosenSubjects.some(s=>s.id===ch.subjectId)).map(ch=>[ch.id,ch.title])],params.get('chapter')||'')}${select('Topic','topicId',[['','All topics'],...allTopics.filter(t=>chosenSubjects.some(s=>s.id===t.subjectId)).map(t=>[t.id,t.title])],params.get('topic')||'')}${select('Difficulty','kind',[['mixed','Mixed'],['basic','L1 Basic'],['medium','L2 Medium'],['hard','L3 Hard'],['important','Important only'],['speed','Speed'],['full','Full'],['pyq','PYQ'],['wrong','Wrong retry']],params.get('level')?['','basic','medium','hard'][Number(params.get('level'))]:'mixed')}${field('Questions','questionCount',20,'number','min="1" max="100" required')}${select('Duration','duration',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']])}${field('L1 weight','mix1',40,'number','min="0" max="100"')}${field('L2 weight','mix2',40,'number','min="0" max="100"')}${field('L3 weight','mix3',20,'number','min="0" max="100"')}${field('Marks per question','marks',1,'number','min="0.1" max="100" step="0.1" required')}${field('Negative marks per wrong answer','negative',0,'number','min="0" max="100" step="0.1" required')}${field('Pass percentage','pass',60,'number','min="0" max="100" required')}</div><button class="primary">Prepare test</button></form></section><h2 class="section">Published tests</h2><div class="grid three" id="published-tests">${[...sets.items,...mocks.items].map(t=>`<article class="card"><span class="badge">${esc(t.kind||'Mock test')}</span><h3>${esc(t.title)}</h3><p>${esc(t.description||'')}</p><a class="btn primary" href="#/tests/${encodeURIComponent(t.id)}">Start</a></article>`).join('')||empty('No admin-published tests yet. Use the practice builder.')}</div><div class="row section"><button id="more-sets" ${sets.hasNext?'':'hidden'}>More test sets</button><button id="more-mocks" ${mocks.hasNext?'':'hidden'}>More mock tests</button></div><h2 class="section">Recent attempts</h2><div class="stack" id="attempt-history">${attempts.items.map(a=>`<a class="card row between" href="#/${a.status==='submitted'?'results':'tests'}/${encodeURIComponent(a.id)}"><b>${esc(a.title||'Practice test')}</b><span>${a.result?a.result.percentage+'%':esc(a.status)}</span><small>${displayDate(a.startedAt||a.createdAt)}</small></a>`).join('')||empty('Your test history starts with your first attempt.')}</div><button id="more-attempts" class="section" ${attempts.hasNext?'':'hidden'}>Older attempts</button>`;
- let setsCursor=sets.cursor,mocksCursor=mocks.cursor,attemptsCursor=attempts.cursor;const appendTest=t=>`<article class="card"><span class="badge">${esc(t.kind||'Mock test')}</span><h3>${esc(t.title)}</h3><p>${esc(t.description||'')}</p><a class="btn primary" href="#/tests/${encodeURIComponent(t.id)}">Start</a></article>`;for(const [button,kind] of [['#more-sets','testSets'],['#more-mocks','mockTests']])$(button).onclick=action(async()=>{const p=await page(kind,{filters:[['status','==','published']],cursor:kind==='testSets'?setsCursor:mocksCursor});if(kind==='testSets')setsCursor=p.cursor;else mocksCursor=p.cursor;$('#published-tests').insertAdjacentHTML('beforeend',p.items.map(appendTest).join(''));$(button).hidden=!p.hasNext;});$('#more-attempts').onclick=action(async()=>{const p=await page(`users/${c.user.uid}/testAttempts`,{cursor:attemptsCursor});attemptsCursor=p.cursor;$('#attempt-history').insertAdjacentHTML('beforeend',p.items.map(a=>`<a class="card row between" href="#/${a.status==='submitted'?'results':'tests'}/${encodeURIComponent(a.id)}"><b>${esc(a.title)}</b><span>${a.result?a.result.percentage+'%':esc(a.status)}</span></a>`).join(''));$('#more-attempts').hidden=!p.hasNext;});$$('[data-kind]',root).forEach(b=>b.onclick=()=>{$('[name=kind]').value=b.dataset.kind;$('[name=questionCount]').value=b.dataset.kind==='full'?50:20;$('[name=duration]').value=b.dataset.kind==='speed'?10:30;$('#test-config').scrollIntoView({behavior:'smooth'});});$('#test-config').onsubmit=action(async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));if(f.topicId){const t=allTopics.find(t=>t.id===f.topicId);if(!t)fail('Choose a valid topic.');f.chapterId=t.chapterId;f.subjectId=t.subjectId;f.examId='';}else if(f.chapterId){const ch=allChapters.find(ch=>ch.id===f.chapterId);if(!ch)fail('Choose a valid chapter.');f.subjectId=ch.subjectId;f.examId='';}else if(f.subjectId)f.examId='';const filters=[];const mostSpecific=f.topicId?'topicId':f.chapterId?'chapterId':f.subjectId?'subjectId':null;if(mostSpecific)filters.push([mostSpecific,'==',f[mostSpecific]]);const level={basic:1,medium:2,hard:3}[f.kind];if(level)filters.push(['level','==',level]);if(f.kind==='important')filters.push(['importance','==','high']);if(f.kind==='pyq')filters.push(['isPyq','==',true]);let qs=[];if(!mostSpecific){const eligible=chosenSubjects.filter(s=>!f.examId||(s.examIds||[s.examId]).includes(f.examId));if(!eligible.length)fail('Choose a subject mapped to this examination.');const chunks=[];for(let i=0;i<eligible.length;i+=10)chunks.push(eligible.slice(i,i+10).map(s=>s.id));for(const chunk of chunks)qs.push(...await candidates([...filters,['subjectId','in',chunk]],Math.ceil(200/chunks.length)));}else qs=await candidates(filters,200);const progressRows=await allPages(`users/${c.user.uid}/questionProgress`),pm=Object.fromEntries(progressRows.map(x=>[x.id,x]));if(f.kind==='wrong')qs=qs.filter(q=>pm[q.id]?.wrong>0);const chosen=mixQuestions(qs,{count:f.kind==='full'?50:Number(f.questionCount),mix:level?[level===1?100:0,level===2?100:0,level===3?100:0]:[Number(f.mix1),Number(f.mix2),Number(f.mix3)],progress:pm});if(!chosen.questions.length)fail('No published questions match your filters.');if(chosen.shortage||chosen.recentFallback){if(!await confirmDialog(`Available: ${chosen.questions.length} questions. Level mix: ${chosen.actualMix.join('/')} (L1/L2/L3). ${chosen.recentFallback?'Recent questions must be included.':''} Start this test?`))return;}const id=await createAttempt(c.user.uid,chosen.questions,{kind:f.kind,title:f.kind+' practice',durationSeconds:(f.kind==='speed'?10:Number(f.duration))*60,scope:{subjectId:f.subjectId||'',chapterId:f.chapterId||'',topicId:f.topicId||'',level:level||0},scoring:{marksPerQuestion:Number(f.marks),negativeMarks:Number(f.negative),passPercentage:Number(f.pass)}});c.go('/tests/'+id);});}
-async function startPublished(test,c){if(test.unlockPolicy?.enabled&&test.unlockPolicy.prerequisiteSetId){const p=await page(`users/${c.user.uid}/testAttempts`,{filters:[['testId','==',test.unlockPolicy.prerequisiteSetId],['status','==','submitted']]});if(!p.items.some(a=>a.result?.percentage>=(test.unlockPolicy.minimumPercentage||60)))fail('Pass the prerequisite test before starting this set.');}let qs=[];if(test.selectionMode==='specific'){let cursor=null;do{const p=await page(`${test._collection||'mockTests'}/${test.id}/items`,{sort:'order',direction:'asc',cursor});qs.push(...(await Promise.all(p.items.map(i=>get('questions/'+i.questionId)))).filter(Boolean));cursor=p.hasNext?p.cursor:null;}while(cursor);}else{const r=test.selectionRules||{},filters=[];if(test.examId&&!r.topicIds?.length&&!r.subjectIds?.length)filters.push(['examId','==',test.examId]);if(r.topicIds?.length)filters.push(['topicId','in',r.topicIds.slice(0,10)]);else if(r.subjectIds?.length)filters.push(['subjectId','in',r.subjectIds.slice(0,10)]);if(r.levels?.length)filters.push(['level','in',r.levels]);if(r.importanceMin==='high')filters.push(['importance','==','high']);else if(r.importanceMin==='medium')filters.push(['importance','in',['medium','high']]);if(r.pyqOnly)filters.push(['isPyq','==',true]);const result=mixQuestions(await candidates(filters,200),{count:r.questionCount||20,mix:r.levelMix?[r.levelMix.l1,r.levelMix.l2,r.levelMix.l3]:[40,40,20]});qs=result.questions;if(result.shortage&&!await confirmDialog(`Only ${qs.length} eligible questions are available. Start with these?`))return;}const id=await createAttempt(c.user.uid,qs,{testId:test.id,testVersion:test.version,title:test.title,kind:test.kind||'mock',durationSeconds:test.durationSeconds,scoring:test.scoring});c.go('/tests/'+id);}
-async function exam(root,id,c){const {attempt,items}=await loadAttempt(c.user.uid,id);if(attempt.status==='submitted'){c.go('/results/'+id);return;}if(attempt.status!=='active')fail('This test was not fully prepared. Start a new test from the list.');let revision=0,index=0,dirty=false,saving=false,submitting=false,interval,clockStart=Date.now();const base=`users/${c.user.uid}`;document.body.classList.add('exam-focus');c.setLeaveGuard(async()=>{if(submitting)return true;const leave=await confirmDialog('Leave this active test? Answers remain saved and the timer continues.');if(leave)await flush();return leave;});const saveLocal=()=>persistDraft(c.user.uid,id,items);const flush=async()=>{if(!dirty||saving||submitting)return;saving=true;const savingRevision=revision;try{const ok=await saveAnswers(c.user.uid,id,items);if(ok&&savingRevision===revision)dirty=false;if($('#save-status'))$('#save-status').textContent=ok?'Saved to account':'Saved locally · reconnect to sync';}catch(e){showError(e);if($('#save-status'))$('#save-status').textContent='Save failed · retry available';}finally{saving=false;}};function remaining(){return Math.max(0,Math.ceil((asDate(attempt.expiresAt)-Date.now())/1000));}
- async function submit(){if(submitting)return;submitting=true;clearInterval(interval);if(!root.isConnected)return;root.innerHTML=skeleton();try{const result=await submitAttempt(c.user.uid,id,items);const a=await get(base+'/testAttempts/'+id,{fresh:true});for(const item of items){if(item.selectedOption===null)continue;const s=await solution({id:item.questionId,solutionVersion:item.questionVersion});await record(c.user.uid,{id:item.questionId,version:item.questionVersion,...item.promptSnapshot},{type:'answer',selectedOption:item.selectedOption,correct:item.selectedOption===s.correctOption,eventId:'test-'+id+'-'+item.id,sessionId:'test-'+id});}if(root.isConnected)c.go('/results/'+id);}catch(e){submitting=false;showError(e);if(!root.isConnected)return;if(!root.isConnected)return;root.innerHTML='<div class="card"><h1>Submission needs a connection</h1><p>Your current answers remain in this tab. Reconnect and retry; do not close this tab until submission succeeds.</p><button id="retry-submit" class="primary">Retry submission</button><a class="btn" href="#/profile">Profile</a><button id="failed-exam-out">Logout</button></div>';$('#retry-submit').onclick=action(submit);$('#failed-exam-out').onclick=action(async()=>{c.setLeaveGuard(null);await logout();});}}
- function draw(){const item=items[index],q=item.promptSnapshot;if(!root.isConnected)return;root.innerHTML=`<div class="row between"><h1>${esc(attempt.title)}</h1><span class="timer ${remaining()<60?'low':''}" id="exam-timer">${timeText(remaining())}</span><button id="leave">Save and leave</button><a class="btn" href="#/profile">Profile</a><button id="exam-out">Logout</button></div><p id="save-status" class="muted">${dirty?'Saving…':'Saved'}</p><div class="exam-layout"><article class="card"><span class="badge">Question ${index+1} of ${items.length} · L${q.level}</span><h2 class="question">${esc(q.questionText)}</h2>${q.imageUrl?`<img src="${esc(q.imageUrl)}" alt="Question illustration">`:''}<div class="options">${q.options.map((x,i)=>`<button data-choice="${i}" class="option ${item.selectedOption===i?'selected':''}">${String.fromCharCode(65+i)}. ${esc(x)}</button>`).join('')}</div><div class="row"><button id="clear">Clear answer</button><button id="mark">${item.markedForReview?'Unmark review':'Mark for review'}</button></div><div class="row between section"><button id="prev" ${index===0?'disabled':''}>Previous</button><button id="next" ${index===items.length-1?'disabled':''}>Next</button></div></article><aside class="card exam-aside"><h3>Question palette</h3><p class="muted">Blue: answered · outline: review</p><div class="palette">${items.map((x,i)=>`<button data-jump="${i}" class="${x.selectedOption!==null?'answered ':''}${x.markedForReview?'review ':''}${index===i?'current':''}" aria-label="Question ${i+1}${x.selectedOption!==null?', answered':''}${x.markedForReview?', review':''}">${i+1}</button>`).join('')}</div><p>${items.filter(x=>x.selectedOption!==null).length} answered / ${items.length}</p><button class="primary" id="submit">Submit test</button><button id="sync" class="section">Save now</button></aside></div>`;$$('[data-choice]').forEach(b=>b.onclick=action(async()=>{item.selectedOption=Number(b.dataset.choice);dirty=true;revision++;saveLocal().catch(showError);draw();}));$$('[data-jump]').forEach(b=>b.onclick=()=>{index=Number(b.dataset.jump);draw();});$('#clear').onclick=action(async()=>{item.selectedOption=null;dirty=true;revision++;await saveLocal();draw();});$('#mark').onclick=action(async()=>{item.markedForReview=!item.markedForReview;dirty=true;revision++;await saveLocal();draw();});$('#prev').onclick=()=>{index--;draw();};$('#next').onclick=()=>{index++;draw();};$('#exam-out').onclick=action(async()=>{c.setLeaveGuard(null);await logout();});$('#sync').onclick=action(flush);$('#leave').onclick=action(async()=>{if(await confirmDialog('Save and leave? The timer continues while you are away.')){await flush();c.setLeaveGuard(null);c.go('/tests');}});$('#submit').onclick=action(async()=>{if(await confirmDialog(`Submit ${items.filter(x=>x.selectedOption!==null).length} answered questions? Submission cannot be undone.`))await submit();});}
- interval=setInterval(()=>{if($('#exam-timer'))$('#exam-timer').textContent=timeText(remaining());if(!remaining())submit();else flush();},1000);const before=e=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',before);c.setCleanup(()=>{clearInterval(interval);window.removeEventListener('beforeunload',before);saveLocal().catch(showError);});draw();if(!remaining())await submit();}
-async function results(root,id,c){const {attempt,items}=await loadAttempt(c.user.uid,id);if(attempt.status!=='submitted')fail('Submit this test before viewing results.');if(!attempt.result){if(!root.isConnected)return;root.innerHTML='<div class="card"><h1>Finish grading</h1><p>The previous submission was interrupted. Your answers are saved.</p><button id="finish-grade" class="primary">Finish result</button></div>';$('#finish-grade').onclick=action(async()=>{await submitAttempt(c.user.uid,id,items);await results(root,id,c);});return;}const r=attempt.result;const history=await page(`users/${c.user.uid}/testAttempts`,{filters:[['status','==','submitted']]});const previous=history.items.find(a=>a.id!==id&&a.result&&a.scopeKey&&a.scopeKey===attempt.scopeKey);if(!root.isConnected)return;root.innerHTML=`<div class="row between"><h1>${esc(attempt.title)} · Result</h1><span class="badge">${r.passed?'Pass':'Needs improvement'}</span></div><div class="grid four">${[['Obtained',r.obtained+' / '+r.maximum],['Percentage',r.percentage+'%'],['Accuracy',r.accuracy+'%'],['Time',timeText(r.timeTakenSeconds)]].map(([k,v])=>`<div class="card"><span class="muted">${k}</span><div class="metric">${v}</div></div>`).join('')}</div><div class="card section"><div class="row"><span>Correct: <b>${r.correct}</b></span><span>Incorrect: <b>${r.incorrect}</b></span><span>Unattempted: <b>${r.unattempted}</b></span></div><p>${previous?`Previous comparable attempt: ${previous.result.percentage}% · change ${(r.percentage-previous.result.percentage).toFixed(1)} percentage points.`:'Complete another comparable test to see improvement.'}</p><p class="muted">Practice result calculated in your browser. It is not a verified examination score.</p><div class="row"><button id="retry-wrong">Retry wrong</button><button id="revise-wrong">Add wrong answers to revision</button><button id="retake">Retake</button><button id="print">Print / PDF</button><button id="save-result">Download result</button><button id="review">Detailed review</button></div></div><div class="grid three section">${Object.entries(r.breakdown).map(([kind,values])=>`<section class="card"><h2>${kind} breakdown</h2>${Object.entries(values).map(([key,v])=>`<div class="statline"><span>${esc(key)}</span><b>${v.correct}/${v.total} · ${pct(v.correct,v.attempted)}%</b></div>`).join('')}</section>`).join('')}</div><section class="card section"><h2>Next steps</h2><p>${r.incorrect?'Retry incorrect questions, read their explanations, and schedule a revision.':'Keep your knowledge fresh with spaced revision.'} ${r.unattempted?'Practice a shorter timed set to improve completion.':''}</p></section><div id="answer-review" class="stack section"></div>`;let sols={};const loadSolutions=async()=>{if(Object.keys(sols).length)return;for(const i of items)sols[i.questionId]=i.solutionSnapshot||await solution({id:i.questionId,solutionVersion:i.questionVersion});await persistGradingSnapshots(c.user.uid,id,items,sols);};$('#review').onclick=action(async()=>{await loadSolutions();$('#answer-review').innerHTML=items.map((i,n)=>{const s=sols[i.questionId];return `<article class="card"><h3>${n+1}. ${esc(i.promptSnapshot.questionText)}</h3><p>Your answer: ${i.selectedOption===null?'Unattempted':esc(i.promptSnapshot.options[i.selectedOption])}</p><div class="answer"><b>Correct: ${esc(i.promptSnapshot.options[s.correctOption])}</b>${sanitize(s.explanationHtml)}<p>${esc(s.memoryTrick||'')}</p></div></article>`;}).join('');});$('#revise-wrong').onclick=action(async()=>{await loadSolutions();let added=0;for(const item of items){if(item.selectedOption===sols[item.questionId].correctOption)continue;await setSaved(c.user.uid,'question',{id:item.questionId,version:item.questionVersion,...item.promptSnapshot},'revision',true);added++;}toast(added+' questions added to revision.');});$('#print').onclick=()=>window.print();$('#save-result').onclick=async()=>{const {download}=await __load("utils.js");download('sajilo-gk-result-'+id+'.json',JSON.stringify({attemptId:id,...r},null,2));};async function retry(wrongOnly){await loadSolutions();const qs=items.filter(i=>!wrongOnly||i.selectedOption!==sols[i.questionId].correctOption).map(i=>({id:i.questionId,version:i.questionVersion,solutionVersion:i.questionVersion,...i.promptSnapshot,marks:i.marks}));if(!qs.length)fail('There are no wrong or unanswered questions.');const newId=await createAttempt(c.user.uid,qs,{title:attempt.title+(wrongOnly?' · retry wrong':' · retake'),testId:attempt.testId,sourceAttemptId:id,scope:attempt.scope||{},scoring:attempt.scoringSnapshot,durationSeconds:attempt.durationSeconds});c.go('/tests/'+newId);}$('#retry-wrong').onclick=action(()=>retry(true));$('#retake').onclick=action(()=>retry(false));}
-async function analytics(root,c){const base=`users/${c.user.uid}`;let cursor=null,previous=[];
- const [s,activity,chosen,scopeRows]=await Promise.all([get(base+'/summary/current',{fresh:true}),allPages(base+'/dailyActivity',{filters:[['dateKey','>=',addDays(dayKey(),-90)]],sort:'dateKey'}),selectedSubjects(c.user.uid),allPages(base+'/scopeStats')]);
- const selected=await Promise.all(chosen.map(subject=>metrics(c.user.uid,{subjectId:subject.id})));const overall=aggregateMetrics(selected),total=overall.questions,mastered=overall.mastered,studied=overall.assessed;
- const relevant=scopeRows.filter(row=>['subject','topic','level'].includes(row.scopeType));
- for(let offset=0;offset<relevant.length;offset+=5)await Promise.all(relevant.slice(offset,offset+5).map(async row=>{const field=row.scopeType==='subject'?'subjectId':row.scopeType==='topic'?'topicId':'level';const current=await metrics(c.user.uid,{[field]:field==='level'?Number(row.scopeId):row.scopeId});Object.assign(row,{mastered:current.mastered,correct:current.correct,attempts:current.attempts});}));
- const subject={};scopeRows.filter(x=>x.scopeType==='subject').forEach(x=>{subject[x.scopeId]={correct:x.correct,attempts:x.attempts,mastered:x.mastered};});async function draw(){const history=await page(base+'/testAttempts',{filters:[['status','==','submitted']],cursor});if(!root.isConnected)return;root.innerHTML=`<h1>Your progress</h1><div class="grid four">${[['Assessed questions',studied],['Mastered',mastered],['Accuracy',pct(s?.correct||0,s?.attempts||0)+'%'],['Longest streak',(s?.longestStreak||0)+' days']].map(([label,value])=>`<div class="card"><span class="muted">${label}</span><div class="metric">${value}</div></div>`).join('')}</div><div class="grid two section"><section class="card"><h2>Preparation</h2>${ring(pct(mastered,total))}<p>Current mastered / eligible questions in My Subjects. Detailed topic and level history also retains previously studied subjects.</p><h3>Activity · recent 91 days</h3>${heatmap(Array.from({length:91},(_,i)=>{const date=addDays(dayKey(),i-90);return {date,count:activity.find(x=>x.dateKey===date)?.attempted||0};}))}<p class="muted">Nepal calendar days · answered questions</p></section><section class="card"><h2>Test score trend</h2>${line(history.items.filter(x=>x.result).reverse().map(x=>x.result.percentage))}</section></div><section class="card section"><h2>Subject accuracy</h2>${Object.entries(subject).sort((a,b)=>pct(a[1].correct,a[1].attempts)-pct(b[1].correct,b[1].attempts)).map(([key,v])=>`<div class="statline"><span>${esc(key)}</span><b>${pct(v.correct,v.attempts)}% · ${v.mastered} mastered</b></div>`).join('')||'<p>No attempts yet.</p>'}</section><div class="grid two section"><section class="card"><h2>Topic mastery</h2>${scopeRows.filter(x=>x.scopeType==='topic').map(x=>`<p><a href="#/study/${encodeURIComponent(x.scopeId)}">${esc(x.scopeId)}</a> · ${x.mastered} mastered · ${pct(x.correct,x.attempts)}% accuracy</p>`).join('')||'<p>No topic activity yet.</p>'}</section><section class="card"><h2>Level progress</h2>${scopeRows.filter(x=>x.scopeType==='level').map(x=>`<div class="statline"><span>L${esc(x.scopeId)}</span><b>${x.mastered} mastered · ${pct(x.correct,x.attempts)}% accuracy</b></div>`).join('')||'<p>No level activity yet.</p>'}</section></div><h2 class="section">Test history</h2><div class="stack">${history.items.map(a=>`<a class="card row between" href="#/results/${esc(a.id)}"><b>${esc(a.title)}</b><span>${a.result?.percentage??'Pending'}%</span><small>${displayDate(a.submittedAt)}</small></a>`).join('')||empty()}</div>`;pager(root,{hasNext:history.hasNext,hasPrev:previous.length>0,onNext:()=>{previous.push(cursor);cursor=history.cursor;return draw();},onPrev:()=>{cursor=previous.pop();return draw();}});}await draw();}
-
-return {render};
-},
-"ui/charts.js":async()=>{
-const {esc,clamp}=await __load("utils.js");
-function ring(percent,label='Preparation'){const p=clamp(percent,0,100);return `<svg class="ring" viewBox="0 0 120 120" role="img" aria-label="${esc(label)} ${p}%"><circle cx="60" cy="60" r="48" fill="none" stroke="var(--line)" stroke-width="9"/><circle cx="60" cy="60" r="48" fill="none" stroke="var(--primary)" stroke-width="9" pathLength="100" stroke-dasharray="${p} 100" transform="rotate(-90 60 60)"/><text x="60" y="67" text-anchor="middle" fill="var(--text)" font-size="23">${p}%</text></svg>`;}
-function line(values,label='Score trend'){if(!values.length)return '<p class="muted">Complete a test to see your trend.</p>';const max=Math.max(100,...values),pts=values.map((v,i)=>`${20+i*(460/Math.max(1,values.length-1))},${125-v/max*105}`).join(' ');return `<svg class="chart" viewBox="0 0 500 150" role="img" aria-label="${esc(label)}: ${esc(values.join(', '))}"><path d="M20 20V125H480" fill="none" stroke="var(--line)"/><polyline points="${pts}" fill="none" stroke="var(--primary)" stroke-width="3"/>${values.map((v,i)=>`<circle cx="${20+i*460/Math.max(1,values.length-1)}" cy="${125-v/max*105}" r="4" fill="var(--purple)"/>`).join('')}</svg>`;}
-function heatmap(days){return `<div class="heatmap">${days.map(d=>`<div class="heat ${d.count>30?'l3':d.count>10?'l2':d.count?'l1':''}" role="img" aria-label="${esc(d.date)}: ${d.count} attempts" title="${esc(d.date)}: ${d.count} attempts"></div>`).join('')}</div>`;}
-
-return {ring,line,heatmap};
-},
-"ui/components.js":async()=>{
-const {esc,friendly}=await __load("utils.js");
-const $=(s,root=document)=>root.querySelector(s);
-const $$=(s,root=document)=>[...root.querySelectorAll(s)];
-const skeleton=()=>'<div class="skeleton"></div><div class="skeleton"></div>';
-const empty=(text='No published content yet.')=>`<div class="card empty">${esc(text)}</div>`;
-function toast(message,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=message;$('#toasts').append(el);setTimeout(()=>el.remove(),6000);}
-function showError(error){console.error('[Sajilo GK]',error);toast(friendly(error),true);}
-function action(fn){return async event=>{const b=event?.submitter||event?.currentTarget;if(b?.tagName==='BUTTON')b.disabled=true;try{await fn(event);}catch(e){showError(e);}finally{if(b)b.disabled=false;}};}
-const metric=(label,value,href)=>`<${href?'a':'div'} class="card" ${href?`href="#${href}"`:''}><div class="muted">${esc(label)}</div><div class="metric">${esc(value)}</div></${href?'a':'div'}>`;
-function modal(title,html){const d=document.createElement('dialog');d.innerHTML=`<div class="row between"><h2>${esc(title)}</h2><button data-close aria-label="Close dialog">✕</button></div>${html}`;document.body.append(d);const previous=document.activeElement;d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>{d.remove();previous?.focus();});d.showModal();return d;}
-async function confirmDialog(message){return new Promise(resolve=>{const d=modal('Please confirm',`<p>${esc(message)}</p><div class="row"><button data-yes class="primary">Confirm</button><button data-no>Cancel</button></div>`);let answer=false;d.querySelector('[data-yes]').onclick=()=>{answer=true;d.close();};d.querySelector('[data-no]').onclick=()=>d.close();d.addEventListener('close',()=>resolve(answer),{once:true});});}
-function renderError(root,error,retry){console.error(error);root.innerHTML=`<div class="errorbox"><h2>Unable to load this page</h2><p>${esc(friendly(error))}</p><div class="row"><button id="retry">Retry</button>${document.body.dataset.primaryAdmin==='true'?'<a class="btn primary" href="#/admin/setup">Fix connection / Rules</a>':''}<a class="btn" href="#/">Home</a></div></div>`;$('#retry',root).onclick=retry;}
-const field=(label,name,value='',type='text',extra='')=>`<label>${esc(label)}<input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`;
-const select=(label,name,options,value='')=>`<label>${esc(label)}<select name="${name}">${options.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`;}).join('')}</select></label>`;
-function pager(root,{hasNext,onNext,onPrev,hasPrev}){const div=document.createElement('div');div.className='row section';div.innerHTML=`<button data-prev ${!hasPrev?'disabled':''}>Previous page</button><button data-next ${!hasNext?'disabled':''}>Next page</button>`;root.append(div);div.querySelector('[data-prev]').onclick=action(onPrev);div.querySelector('[data-next]').onclick=action(onNext);}
-const translations={Home:'होम','My Subjects':'मेरा विषयहरू',Revision:'पुनरावृत्ति',Tests:'परीक्षा',Saved:'सुरक्षित सामग्री','Quick Revision':'छिटो पुनरावृत्ति','Profile & preferences':'प्रोफाइल र प्राथमिकता',Progress:'प्रगति','Study planner':'अध्ययन योजना','Current affairs':'समसामयिक गतिविधि','Formula sheets':'सूत्र संग्रह',Notifications:'सूचनाहरू',Search:'खोज्नुहोस्','Admin center':'प्रशासन','Continue to your account':'आफ्नो खातामा जानुहोस्','Create a new account':'नयाँ खाता बनाउनुहोस्','Continue with Google':'Google बाट जारी राख्नुहोस्','Create your account':'आफ्नो खाता बनाउनुहोस्','Create account':'खाता बनाउनुहोस्','Sign in':'लगइन','Sign out':'लगआउट','Full name':'पूरा नाम',Email:'इमेल',Password:'पासवर्ड','Reset password':'पासवर्ड परिवर्तन','Send reset email':'रिसेट इमेल पठाउनुहोस्','Verify your email':'इमेल प्रमाणित गर्नुहोस्','Resend email':'इमेल फेरि पठाउनुहोस्','I have verified':'प्रमाणित गरिसकेँ','Choose your subjects':'आफ्ना विषय छान्नुहोस्','Continue to subjects →':'विषय छनोटमा जानुहोस् →','Save subjects & open dashboard':'विषय सुरक्षित गरी होम खोल्नुहोस्','＋ Add / manage subjects':'＋ विषय थप्नुहोस् / मिलाउनुहोस्','All selected examinations':'छानिएका सबै परीक्षा',Examination:'परीक्षा',Subject:'विषय',Chapter:'अध्याय',Topic:'शीर्षक','All subjects':'सबै विषय','All chapters':'सबै अध्याय','All topics':'सबै शीर्षक','All levels':'सबै तह',Reading:'पढाइ',Mastery:'दक्षता','Not assessed':'परीक्षण भएको छैन','Not started':'सुरु भएको छैन','Latest submitted test':'पछिल्लो परीक्षा','Due reviews':'आजको पुनरावृत्ति','Today’s goal':'आजको लक्ष्य','Your study rhythm':'अध्ययनको निरन्तरता','Practice with purpose':'उद्देश्यसहित अभ्यास','Recommended next steps':'अबको अध्ययन सुझाव','Explore my subjects →':'मेरा विषय हेर्नुहोस् →','Continue study →':'अध्ययन जारी राख्नुहोस् →','Continue reading →':'पढाइ जारी राख्नुहोस् →','View all →':'सबै हेर्नुहोस् →','View progress →':'प्रगति हेर्नुहोस् →','Edit goal':'लक्ष्य मिलाउनुहोस्','Build a test':'परीक्षा बनाउनुहोस्','Open saved items':'सुरक्षित सामग्री खोल्नुहोस्','Study materials':'अध्ययन सामग्री','Read this material →':'यो सामग्री पढ्नुहोस् →','Practice questions':'अभ्यास प्रश्नहरू','Test what you learned':'पढेको कुरा जाँच्नुहोस्','Test what you learned →':'पढेको कुरा जाँच्नुहोस् →','Mark as read':'पढिसकेको चिन्ह लगाउनुहोस्','Mark as unread':'नपढेको चिन्ह लगाउनुहोस्','Favourite material':'मनपर्ने सामग्री','Add to revision':'पुनरावृत्तिमा थप्नुहोस्','Important for me':'मेरो लागि महत्त्वपूर्ण','Personal note':'व्यक्तिगत टिपोट','Report an issue':'त्रुटि रिपोर्ट गर्नुहोस्','Copy link':'लिङ्क कपी गर्नुहोस्','Print / PDF':'प्रिन्ट / PDF','On this page':'यस सामग्रीमा','Your study tools':'अध्ययनका उपकरणहरू','Save note':'टिपोट सुरक्षित गर्नुहोस्','Send report':'रिपोर्ट पठाउनुहोस्',Reason:'कारण',Details:'विवरण','Apply filters':'फिल्टर लागू गर्नुहोस्',Materials:'सामग्रीहरू',Questions:'प्रश्नहरू','Personal notes':'व्यक्तिगत टिपोटहरू',Important:'महत्त्वपूर्ण','Open':'खोल्नुहोस्',Remove:'हटाउनुहोस्','Edit note':'टिपोट सच्याउनुहोस्','Previous page':'अघिल्लो पृष्ठ','Next page':'पछिल्लो पृष्ठ',Previous:'अघिल्लो',Next:'अर्को','Reveal answer':'उत्तर देखाउनुहोस्','Show answer':'उत्तर देखाउनुहोस्','Hide answer':'उत्तर लुकाउनुहोस्','Check answer':'उत्तर जाँच्नुहोस्','Submit test':'परीक्षा बुझाउनुहोस्','Save and leave':'सुरक्षित गरी निस्कनुहोस्','Mark for review':'फेरि हेर्न चिन्ह लगाउनुहोस्','Clear answer':'उत्तर हटाउनुहोस्','Retry wrong':'गलत प्रश्न फेरि गर्नुहोस्','Detailed review':'विस्तृत समीक्षा','Add wrong answers to revision':'गलत उत्तर पुनरावृत्तिमा थप्नुहोस्','Revision source':'पुनरावृत्तिको स्रोत',Format:'ढाँचा','Session items':'प्रश्न / सामग्री संख्या',Duration:'समय','Preview revision →':'पुनरावृत्ति सूची हेर्नुहोस् →','Start this revision':'यो पुनरावृत्ति सुरु गर्नुहोस्','Your revision preview':'पुनरावृत्तिको सूची','Reveal explanation':'व्याख्या देखाउनुहोस्','End session':'अभ्यास समाप्त गर्नुहोस्','Back to dashboard':'होममा फर्कनुहोस्','Build another revision':'अर्को पुनरावृत्ति बनाउनुहोस्','Again':'फेरि','Hard':'गाह्रो','Good':'ठीक','Easy':'सजिलो','Untimed':'समय सीमा छैन',Confirm:'पुष्टि गर्नुहोस्',Cancel:'रद्द गर्नुहोस्',Retry:'फेरि प्रयास गर्नुहोस्'};
-let language=localStorage.getItem('sajilo-language')||'en',localeObserver=null,localeTimer=null;const originalText=new WeakMap();
-function setLanguage(value){language=value==='ne'?'ne':'en';localStorage.setItem('sajilo-language',language);document.documentElement.lang=language;translatePage();}
-function translatePage(){if(!document.body)return;const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){if(node.parentElement?.closest('script,style,textarea,.note-body,.question,.options,.rich-editor,[contenteditable]'))continue;const current=node.nodeValue.trim();let original=originalText.get(node);if(!original||(current!==original&&current!==translations[original])){original=current;if(!translations[original])continue;originalText.set(node,original);}const target=language==='ne'?translations[original]:original;if(target&&current!==target)node.nodeValue=node.nodeValue.replace(current,target);}}
-function observeLanguage(){if(localeObserver)return;localeObserver=new MutationObserver(()=>{clearTimeout(localeTimer);localeTimer=setTimeout(translatePage,30);});localeObserver.observe(document.body,{subtree:true,childList:true,characterData:true});translatePage();}
-
-return {$,$$,skeleton,empty,toast,showError,action,metric,modal,confirmDialog,renderError,field,select,pager,setLanguage,observeLanguage};
-},
-"ui/editor.js":async()=>{
-const {esc}=await __load("utils.js");
-const TAGS=new Set(['P','BR','H2','H3','H4','UL','OL','LI','STRONG','EM','B','I','U','BLOCKQUOTE','TABLE','THEAD','TBODY','TR','TH','TD','IMG','A','HR','MARK','SPAN','DIV','SUB','SUP']);
-function sanitize(html){const doc=new DOMParser().parseFromString(String(html),'text/html');for(const el of [...doc.body.querySelectorAll('*')]){if(['SCRIPT','STYLE','IFRAME','OBJECT','FORM','INPUT','SVG','MATH'].includes(el.tagName)){el.remove();continue;}if(!TAGS.has(el.tagName)){el.replaceWith(...el.childNodes);continue;}for(const a of [...el.attributes]){if(!['href','src','alt','colspan','rowspan','title'].includes(a.name))el.removeAttribute(a.name);}for(const attr of ['href','src'])if(el.hasAttribute(attr)){try{const url=new URL(el.getAttribute(attr),location.href);if(url.protocol!=='https:'&&!(url.origin===location.origin&&url.protocol==='http:'))el.removeAttribute(attr);}catch{el.removeAttribute(attr);}}if(el.tagName==='A')el.setAttribute('rel','noopener noreferrer');if(el.tagName==='IMG'){el.setAttribute('loading','lazy');if(!el.hasAttribute('alt'))el.setAttribute('alt','');}}return doc.body.innerHTML;}
-function mountEditor(root,initial=''){root.innerHTML=`<div class="editor-tools">${[['bold','Bold'],['italic','Italic'],['insertUnorderedList','List'],['formatBlock','Heading']].map(([c,t])=>`<button type="button" data-cmd="${c}">${t}</button>`).join('')}<button type="button" data-link>Link</button><button type="button" data-image>Image</button><button type="button" data-table>Table</button><button type="button" data-source>HTML source</button></div><div contenteditable="true" role="textbox" aria-label="Rich content" aria-multiline="true" class="rich-editor">${sanitize(initial)}</div>`;const ed=root.querySelector('.rich-editor');root.querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>{ed.focus();document.execCommand(b.dataset.cmd,false,b.dataset.cmd==='formatBlock'?'h2':null);});root.querySelector('[data-link]').onclick=()=>{const url=prompt('HTTPS link');if(url?.startsWith('https://')){ed.focus();document.execCommand('createLink',false,url);}};root.querySelector('[data-image]').onclick=()=>{const url=prompt('HTTPS image URL');if(url?.startsWith('https://')){ed.focus();document.execCommand('insertHTML',false,`<img src="${esc(url)}" alt="${esc(prompt('Image description')||'')}">`);}};root.querySelector('[data-table]').onclick=()=>{ed.focus();document.execCommand('insertHTML',false,'<table><tr><th>Heading</th><th>Heading</th></tr><tr><td>Value</td><td>Value</td></tr></table>');};root.querySelector('[data-source]').onclick=()=>{const html=prompt('Edit allowed HTML',ed.innerHTML);if(html!==null)ed.innerHTML=sanitize(html);};ed.addEventListener('paste',e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));});return {value:()=>sanitize(ed.innerHTML),element:ed};}
-
-return {sanitize,mountEditor};
-},
-"ui/navigation.js":async()=>{
-const {esc}=await __load("utils.js");
-const {$,modal}=await __load("ui/components.js");
-const {navigationState,isPrimaryEmail}=await __load("services/access.js");
-const symbols={home:'<path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/>',subjects:'<path d="M3 5q5-2 9 1 4-3 9-1v15q-5-2-9 0-4-2-9 0zM12 6v14"/>',revision:'<path d="M20 7a9 9 0 1 0 1 8M20 2v6h-6"/>',tests:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 10 2 2 5-5M8 16h8"/>',saved:'<path d="M6 3h12v18l-6-4-6 4z"/>',admin:'<path d="m12 2 8 4v6q0 6-8 10-8-4-8-10V6z"/><path d="m8 12 3 3 5-6"/>',search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',theme:'<path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/>'};
-const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${symbols[name]||symbols.subjects}</svg>`;
-const primaryRoutes=[['/','Home','home'],['/my-subjects','My Subjects','subjects'],['/revision','Revision','revision'],['/tests','Tests','tests'],['/saved','Saved','saved']];
-const adminRoutes=[['/admin','Overview'],['/admin/content','Questions & syllabus'],['/admin/materials','Study materials'],['/admin/mappings','Exam mappings'],['/admin/import','Import / export'],['/admin/users','Students & reports'],['/admin/settings','Settings'],['/admin/setup','Connection & setup']];
-function active(url,path){const group=navigationState('#'+path).group;if(url==='/')return path==='/';const tab=primaryRoutes.find(r=>r[0]===url);if(tab)return tab[2]===group;if(url==='/admin')return path==='/admin';return path===url||path.startsWith(url+'/');}
-function navigationLinks(items,path){return items.map(([url,label,name])=>`<a href="#${url}" class="${active(url,path)?'active':''}" ${active(url,path)?'aria-current="page"':''}>${name?icon(name):''}<span>${esc(label)}</span></a>`).join('');}
-function mountShell(path,authModule,extras){const user=authModule?.session?.user,admin=authModule?.canAdmin()||isPrimaryEmail(user),issues=authModule?.session?.issues||[],name=authModule?.session?.profile?.displayName||user?.displayName||'Student',label=adminRoutes.find(r=>r[0]===path)?.[1]||primaryRoutes.find(r=>active(r[0],path))?.[1]||'Your learning space';document.body.dataset.primaryAdmin=authModule?.canDelegate()?'true':'false';document.body.classList.toggle('admin-route',path.startsWith('/admin'));document.body.classList.toggle('account-route',['/welcome','/login','/signup','/reset-password'].includes(path)||path.startsWith('/onboarding/'));
-$('#shell').innerHTML=`<aside class="sidebar"><a class="brand" href="#/"><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%232457d6%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23be2872%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%22112%22%20fill%3D%22url(%23g)%22%2F%3E%3Cpath%20d%3D%22M100%20145q80-30%20156%2015%2076-45%20156-15v225q-80-30-156%2015-76-45-156-15z%22%20fill%3D%22white%22%2F%3E%3Cpath%20d%3D%22M256%20160v225%22%20stroke%3D%22%237040c8%22%20stroke-width%3D%2214%22%2F%3E%3Cpath%20d%3D%22m153%20250%2030%2030%2048-65%22%20fill%3D%22none%22%20stroke%3D%22%232457d6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E%0A" alt=""><span>Sajilo GK</span></a><p class="tagline muted">Smart Loksewa Preparation Made Simple</p><p class="nav-section-title">YOUR LEARNING</p><nav class="nav" aria-label="Main navigation">${navigationLinks(primaryRoutes,path)}</nav>${admin?`<p class="nav-section-title">CONTROL CENTER</p><nav class="nav admin-nav" aria-label="Administration">${navigationLinks(adminRoutes,path)}</nav>`:''}<p class="nav-section-title">TOOLS & ACCOUNT</p><nav class="nav" aria-label="More navigation">${navigationLinks(extras,path)}</nav></aside><div class="workspace"><header class="topbar"><div class="topbar-context"><a class="brand" href="#/"><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%232457d6%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23be2872%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%22112%22%20fill%3D%22url(%23g)%22%2F%3E%3Cpath%20d%3D%22M100%20145q80-30%20156%2015%2076-45%20156-15v225q-80-30-156%2015-76-45-156-15z%22%20fill%3D%22white%22%2F%3E%3Cpath%20d%3D%22M256%20160v225%22%20stroke%3D%22%237040c8%22%20stroke-width%3D%2214%22%2F%3E%3Cpath%20d%3D%22m153%20250%2030%2030%2048-65%22%20fill%3D%22none%22%20stroke%3D%22%232457d6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E%0A" alt=""><span>Sajilo GK</span></a><span class="route-label">${esc(label)}</span></div><div class="header-actions"><span id="network" class="connection-dot ${navigator.onLine?'':'offline'}">${navigator.onLine?'Online':'Offline'}</span>${user?`<a class="icon-button" href="#/search" aria-label="Search">${icon('search')}</a>${admin?`<a class="btn admin-button" href="#/admin">${icon('admin')}<span>Admin</span></a>`:''}<a class="avatar-link" href="#/profile" aria-label="Profile and preferences">${esc(name.slice(0,1).toUpperCase())}</a><a class="btn profile-link" href="#/profile">Profile</a><button id="header-signout" class="header-signout">Logout</button>`:''}<button id="theme" class="icon-button" aria-label="Change color theme">${icon('theme')}</button><button id="menu" class="icon-button mobile-only" aria-label="Open navigation">${icon('menu')}</button></div></header>${issues.length?`<div class="account-notice" role="status"><span>Some account data could not load. Your sign-in is still active.</span>${admin?'<a class="btn" href="#/admin/setup">Fix connection / Rules</a>':'<a class="btn" href="#/profile">Account details</a>'}<button id="refresh-account">Retry connection</button></div>`:''}<main id="main" tabindex="-1"><div class="skeleton"></div><div class="skeleton"></div></main></div><nav class="bottomnav" aria-label="Student tabs">${navigationLinks(primaryRoutes,path)}</nav>`;
-if($('#header-signout'))$('#header-signout').onclick=async event=>{const button=event.currentTarget;button.disabled=true;try{await authModule.logout();}catch(error){console.error(error);button.disabled=false;const note=document.createElement('p');note.textContent='Sign out could not finish. Check connection and retry.';$('#main').prepend(note);}};$('#theme').onclick=()=>{const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;localStorage.setItem('sajilo-theme',theme);};$('#menu').onclick=()=>{const drawer=modal('Navigation',`<nav class="drawer-links" aria-label="All destinations">${navigationLinks(primaryRoutes,path)}${admin?'<p class="nav-section-title">ADMINISTRATION</p>'+navigationLinks(adminRoutes,path):''}<p class="nav-section-title">TOOLS & ACCOUNT</p>${navigationLinks(extras,path)}<button id="drawer-theme" type="button">Change light / dark theme</button></nav>`);$('#drawer-theme',drawer).onclick=()=>{const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;localStorage.setItem('sajilo-theme',theme);$('#drawer-theme',drawer).textContent=theme==='dark'?'Switch to light theme':'Switch to dark theme';};};return {root:$('#main'),retry:$('#refresh-account')};}
-
-return {icon,primaryRoutes,adminRoutes,navigationLinks,mountShell};
-},
-"utils.js":async()=>{
-const TZ='Asia/Kathmandu';
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const asDate=v=>v?.toDate?v.toDate():new Date(v?.seconds?v.seconds*1000:v??Date.now());
-const dayKey=(v=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(asDate(v));
-const displayDate=v=>v?new Intl.DateTimeFormat('en-GB',{timeZone:TZ,dateStyle:'medium',timeStyle:'short'}).format(asDate(v)):'—';
-function addDays(key,n){const d=new Date(key+'T00:00:00+05:45');d.setTime(d.getTime()+n*86400000);return dayKey(d);}
-const nepalMidnight=key=>new Date(key+'T00:00:00+05:45');
-const pct=(a,b)=>b?Math.round(a/b*100):0;
-const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const uid=()=>crypto.randomUUID();
-const normalize=s=>String(s).normalize('NFC').toLocaleLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu,' ').trim();
-const tokens=s=>[...new Set(normalize(s).split(/\s+/).filter(Boolean))].slice(0,120);
-function shuffle(items,rng=Math.random){const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-const debounce=(fn,ms=300)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
-function friendly(error){const code=error?.code||'';if(code.includes('permission'))return 'Firestore access was denied. Verify your email. The administrator can update this version’s Rules from Admin → Connection & setup.';if(code.includes('deadline'))return 'Connection took too long. Your account remains available in Profile; please retry.';if(code.includes('network')||!navigator.onLine)return 'Connection unavailable. Please reconnect and retry.';if(code.includes('invalid-credential'))return 'Email or password is incorrect.';if(code.includes('email-already'))return 'This email already has an account.';if(code.includes('popup-closed'))return 'Google sign-in was closed. Please try again.';if(code.includes('too-many'))return 'Too many requests. Please wait and retry.';if(code.includes('failed-precondition'))return 'This query needs a database index. Please contact the administrator.';if(code.includes('resource-exhausted'))return 'The daily service quota has been reached. Please try later.';return error?.safe?error.message:'The action could not be completed. Please retry.';}
-function fail(message){const e=new Error(message);e.safe=true;throw e;}
-function requireOnline(){if(!navigator.onLine)fail('Offline reading is available. Reconnect to save changes.');}
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function download(name,content,type='application/json'){const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-const csv=rows=>'\ufeff'+rows.map(row=>row.map(v=>'"'+String(v??'').replace(/^([\s]*[=+@-])/,"'$1").replaceAll('"','""')+'"').join(',')).join('\r\n');
-function validateQuestion(q){const e=[];if(!q.questionText?.trim())e.push('Question text is required');if(!Array.isArray(q.options)||q.options.length<2||q.options.length>6||q.options.some(x=>typeof x!=='string'||!x.trim()))e.push('Provide 2–6 non-empty options');if(!Number.isInteger(q.correctOption)||q.correctOption<0||q.correctOption>=q.options?.length)e.push('Correct option is invalid');if(![1,2,3].includes(q.level))e.push('Level must be 1, 2 or 3');if(!['low','medium','high'].includes(q.importance))e.push('Invalid importance');for(const k of ['examId','subjectId','chapterId','topicId'])if(!q[k])e.push(k+' is required');if(q.questionText?.length>12000)e.push('Question is too long');if((q.tags||[]).length>30)e.push('At most 30 tags');return e;}
-const timeText=s=>`${String(Math.floor(Math.max(0,s)/60)).padStart(2,'0')}:${String(Math.max(0,Math.floor(s))%60).padStart(2,'0')}`;
-
-return {TZ,esc,asDate,dayKey,displayDate,addDays,nepalMidnight,pct,clamp,uid,normalize,tokens,shuffle,debounce,friendly,fail,requireOnline,sleep,download,csv,validateQuestion,timeText};
-}
+/* ============ FIREBASE ============ */
+const firebaseConfig = {
+  apiKey: "AIzaSyDK1wwahwoJxNAH_Iats2wrSMUA42jVhSI",
+  authDomain: "loksewa-2083.firebaseapp.com",
+  projectId: "loksewa-2083",
+  storageBucket: "loksewa-2083.firebasestorage.app",
+  messagingSenderId: "484441818228",
+  appId: "1:484441818228:web:fb43d456131cd40ec1fd21",
+  measurementId: "G-D5RTD5R7B4"
 };
-if(globalThis.__SAJILO_TEST__)globalThis.__sajiloModules={load:__load,resources:__resources};
-else __load('app.js').catch(error=>{console.error('Application startup failed',error);const root=document.querySelector('#main');if(root){root.innerHTML='<section class="card auth"><h1>Connection unavailable</h1><p>Allow Firebase scripts and check your internet connection. Open this site through GitHub Pages or an HTTP server.</p><button id="boot-retry">Retry</button></section>';document.querySelector('#boot-retry').onclick=()=>location.reload();}});
+
+let app, auth, db, firebaseInitError = null;
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  try {
+    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) });
+  } catch {
+    db = getFirestore(app);
+  }
+} catch (err) {
+  firebaseInitError = err;
+  console.error("Firebase init failed", err);
+}
+
+/* ============ STATE ============ */
+const OWNER_EMAIL = "deepakrajpant978@gmail.com";
+const NEPAL_TZ = "Asia/Kathmandu";
+const S = {
+  user: null, profile: null, isOwner: false, isAdmin: false,
+  profileLoaded: false, profilePromise: null,
+  exams: [], selectedSubjects: [], routeToken: 0, pageCleanup: null,
+  // admin form state
+  editOptions: [], editCorrectId: "a", editResources: [],
+  practice: null
+};
+const els = {};
+
+function cacheEls() {
+  ["bootScreen","authView","appShell","app","menuToggle","adminHeaderBtn","themeToggle",
+   "profileBtn","profileDropdown","avatarInitial","profileChipName","logoutBtn","mobileLogoutBtn",
+   "sidebar","sidebarBackdrop","sidebarLogoutBtn","verifyBanner","resendVerifyBtn","refreshVerifyBtn",
+   "modalRoot","toastRoot","loginForm","signupForm","resetForm","googleBtn","authMessage",
+   "dropdownAvatar","dropdownName","dropdownEmail","dropdownVerifyBadge"
+  ].forEach(id => { els[id] = document.getElementById(id); });
+}
+
+/* ============ UTILS ============ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const escapeHtml = v => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+
+function safeUrl(raw) {
+  try { const u = new URL(String(raw || "").trim()); return ["http:","https:"].includes(u.protocol) ? u.href : ""; }
+  catch { return ""; }
+}
+function youtubeId(raw) {
+  const url = safeUrl(raw);
+  if (!url) return "";
+  const u = new URL(url);
+  if (u.hostname === "youtu.be") return u.pathname.split("/").filter(Boolean)[0] || "";
+  if (u.pathname.startsWith("/embed/")) return u.pathname.split("/")[2] || "";
+  return u.searchParams.get("v") || "";
+}
+function sanitizeHtml(html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = String(html || "");
+  const allowed = new Set(["P","BR","STRONG","B","EM","I","U","S","UL","OL","LI","H1","H2","H3","H4","H5","H6","BLOCKQUOTE","CODE","PRE","SPAN","A","TABLE","THEAD","TBODY","TR","TH","TD","IMG","HR","MARK","DIV","FIGURE","FIGCAPTION"]);
+  const walk = (node) => {
+    Array.from(node.children).forEach(c => {
+      if (!allowed.has(c.tagName)) { c.replaceWith(...c.childNodes); return; }
+      Array.from(c.attributes).forEach(a => {
+        if (a.name === "href" || a.name === "src") {
+          if (safeUrl(a.value)) {
+            c.setAttribute("rel","noopener noreferrer");
+            if (a.name === "href") c.setAttribute("target","_blank");
+          } else c.removeAttribute(a.name);
+        } else if (!["class","alt","title","colspan","rowspan","width","height"].includes(a.name)) {
+          c.removeAttribute(a.name);
+        }
+      });
+      walk(c);
+    });
+  };
+  walk(tpl.content);
+  return tpl.innerHTML;
+}
+function nepalDateKey() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: NEPAL_TZ, year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+}
+function toDate(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v.toDate === "function") return v.toDate();
+  if (typeof v === "number") return new Date(v);
+  if (typeof v === "string") { const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
+  return null;
+}
+function formatDate(v) {
+  const d = toDate(v);
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: NEPAL_TZ, year:"numeric", month:"short", day:"numeric" }).format(d);
+}
+function timeAgo(v) {
+  const d = toDate(v);
+  if (!d) return "—";
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return formatDate(d);
+}
+function toast(msg, type = "info", ms = 3400) {
+  if (!els.toastRoot) return;
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  els.toastRoot.appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+function spinner(text = "Loading…") {
+  return `<div class="loading-state"><div class="boot-spinner" style="margin:0 auto 12px;border-color:var(--border);border-top-color:var(--primary)"></div><p class="muted">${escapeHtml(text)}</p></div>`;
+}
+function emptyState(t, txt, action = "") {
+  return `<div class="empty-state"><div class="empty-icon">📭</div><h3>${escapeHtml(t)}</h3><p>${escapeHtml(txt)}</p>${action}</div>`;
+}
+function errorState(t, txt) {
+  return `<div class="error-state"><div class="error-icon">⚠️</div><h3>${escapeHtml(t)}</h3><p>${escapeHtml(txt)}</p><button class="btn btn-primary" data-retry>Retry</button></div>`;
+}
+function friendlyError(err, ctx = "") {
+  console.error(`[SajiloGK:${ctx}]`, err);
+  const c = err?.code || "";
+  if (c === "permission-denied") return "Access denied. Verify your email or check that content is published.";
+  if (c === "unavailable") return "Network or Firebase unavailable.";
+  if (c === "failed-precondition") return "Firestore index missing. See setup docs.";
+  if (c === "auth/invalid-credential" || c === "auth/wrong-password" || c === "auth/user-not-found") return "Email or password incorrect.";
+  if (c === "auth/email-already-in-use") return "Email already in use.";
+  if (c === "auth/too-many-requests") return "Too many attempts. Wait a moment.";
+  return ctx ? `Failed while ${ctx}. Retry.` : "Something went wrong.";
+}
+function confirmDialog(msg, { title = "Confirm", confirmText = "Confirm", danger = false } = {}) {
+  return new Promise(resolve => {
+    const root = els.modalRoot;
+    root.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2>${escapeHtml(title)}</h2><button class="modal-close" data-cancel>✕</button></div>
+      <p>${escapeHtml(msg)}</p>
+      <div class="form-actions"><button class="btn btn-ghost" data-cancel>Cancel</button>
+      <button class="btn ${danger ? "btn-danger" : "btn-primary"}" data-confirm>${escapeHtml(confirmText)}</button></div></div>`;
+    root.classList.add("open");
+    document.body.classList.add("no-scroll");
+    const done = v => { root.classList.remove("open"); root.innerHTML = ""; document.body.classList.remove("no-scroll"); resolve(v); };
+    root.querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => done(false));
+    root.querySelector("[data-confirm]").onclick = () => done(true);
+    root.onclick = e => { if (e.target === root) done(false); };
+  });
+}
+function openModal(html, wide = false) {
+  const root = els.modalRoot;
+  root.innerHTML = `<div class="modal ${wide ? "wide" : ""}" role="dialog" aria-modal="true">${html}</div>`;
+  root.classList.add("open");
+  document.body.classList.add("no-scroll");
+  root.querySelectorAll("[data-modal-close]").forEach(b => b.onclick = closeModal);
+  root.onclick = e => { if (e.target === root) closeModal(); };
+  return root.querySelector(".modal");
+}
+function closeModal() {
+  els.modalRoot.classList.remove("open");
+  els.modalRoot.innerHTML = "";
+  document.body.classList.remove("no-scroll");
+}
+function setPage(html) { els.app.innerHTML = html; }
+function cleanup() {
+  if (typeof S.pageCleanup === "function") { try { S.pageCleanup(); } catch {} }
+  S.pageCleanup = null;
+}
+function newToken() { S.routeToken++; return S.routeToken; }
+function isStale(t) { return t !== S.routeToken; }
+function parseRoute() {
+  const raw = location.hash.replace(/^#\/?/, "");
+  const [pathPart, queryPart] = raw.split("?");
+  return { segs: pathPart.split("/").filter(Boolean), params: new URLSearchParams(queryPart || "") };
+}
+function go(path) { location.hash === `#${path}` ? router() : (location.hash = `#${path}`); }
+function bindRetry() { const b = els.app.querySelector('[data-retry]'); if (b) b.onclick = () => router(); }
+function levelLabel(l) { return l === "L1" ? "L1 · Basic" : l === "L2" ? "L2 · Medium" : l === "L3" ? "L3 · Advanced" : l || "—"; }
+function statusBadge(s) { return `<span class="badge ${escapeHtml(s || "draft")}">${escapeHtml(s || "draft")}</span>`; }
+function activeNav(path) {
+  $$("[data-nav]").forEach(a => {
+    const target = (a.getAttribute("href") || "").replace(/^#/, "");
+    const cur = location.hash.replace(/^#/, "") || "/home";
+    a.classList.toggle("active", target === cur || (target !== "/home" && cur.startsWith(target)));
+  });
+}
+function downloadFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* ============ AUTH ============ */
+function showAuth() { els.authView.classList.remove("hidden"); els.appShell.classList.add("hidden"); els.bootScreen.classList.add("hidden"); }
+function showShell() { els.authView.classList.add("hidden"); els.appShell.classList.remove("hidden"); els.bootScreen.classList.add("hidden"); }
+function authMsg(t, type = "error") {
+  if (!els.authMessage) return;
+  els.authMessage.textContent = t;
+  els.authMessage.className = `auth-message ${type}`;
+}
+function setAuthTab(tab) {
+  $$(".auth-tab").forEach(b => b.classList.toggle("active", b.dataset.authTab === tab));
+  els.loginForm.classList.toggle("hidden", tab !== "login");
+  els.signupForm.classList.toggle("hidden", tab !== "signup");
+  els.resetForm.classList.toggle("hidden", tab !== "reset");
+  authMsg("");
+}
+function renderProfileChrome() {
+  const u = S.user;
+  if (!u) return;
+  const name = S.profile?.displayName || u.displayName || u.email?.split("@")[0] || "Student";
+  const initial = (name.trim().charAt(0) || "S").toUpperCase();
+  if (els.profileChipName) els.profileChipName.textContent = name;
+  if (els.avatarInitial) els.avatarInitial.textContent = initial;
+  if (els.dropdownAvatar) els.dropdownAvatar.textContent = initial;
+  if (els.dropdownName) els.dropdownName.textContent = name;
+  if (els.dropdownEmail) els.dropdownEmail.textContent = u.email || "";
+  if (els.dropdownVerifyBadge) {
+    els.dropdownVerifyBadge.textContent = u.emailVerified ? "Verified" : "Unverified";
+    els.dropdownVerifyBadge.className = `badge ${u.emailVerified ? "green" : "amber"}`;
+  }
+  if (els.adminHeaderBtn) els.adminHeaderBtn.classList.toggle("hidden", !(S.isOwner || S.isAdmin));
+  if (els.verifyBanner) els.verifyBanner.classList.toggle("hidden", !!u.emailVerified);
+}
+async function ensureProfile(force = false) {
+  if (S.profileLoaded && !force) return S.profile;
+  if (S.profilePromise && !force) return S.profilePromise;
+  S.profilePromise = (async () => {
+    try {
+      if (!db || !S.user) return null;
+      const ref = doc(db, "users", S.user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        S.profile = { id: snap.id, ...snap.data() };
+      } else if (S.user.emailVerified) {
+        const data = {
+          uid: S.user.uid, email: S.user.email || "",
+          displayName: S.user.displayName || S.user.email?.split("@")[0] || "Student",
+          examIds: [], subjectIds: [], suspended: false, premium: false,
+          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        };
+        await setDoc(ref, data);
+        S.profile = { id: S.user.uid, ...data };
+      }
+      return S.profile;
+    } catch (err) {
+      console.warn("Profile load failed", err);
+      return null;
+    } finally { S.profileLoaded = true; }
+  })();
+  return S.profilePromise;
+}
+async function loadRole() {
+  S.isOwner = S.user?.email === OWNER_EMAIL && S.user?.emailVerified === true;
+  S.isAdmin = S.isOwner;
+  if (!S.isOwner && S.user) {
+    try {
+      const snap = await getDoc(doc(db, "adminRoles", S.user.uid));
+      if (snap.exists()) {
+        const d = snap.data();
+        S.isAdmin = d.active === true && ["admin","editor"].includes(d.role);
+      }
+    } catch {}
+  }
+  if (els.adminHeaderBtn) els.adminHeaderBtn.classList.toggle("hidden", !(S.isOwner || S.isAdmin));
+}
+async function doLogout() {
+  cleanup();
+  try { await signOut(auth); } catch (err) { console.warn(err); }
+  S.user = null; S.profile = null; S.profileLoaded = false; S.profilePromise = null;
+  S.isOwner = false; S.isAdmin = false; S.selectedSubjects = []; S.exams = [];
+  if (els.profileDropdown) els.profileDropdown.classList.add("hidden");
+  showAuth(); setAuthTab("login");
+  authMsg("You have been logged out.", "success");
+}
+async function resendVerify() {
+  if (!S.user) return;
+  try { await sendEmailVerification(S.user); toast("Verification sent.", "success"); }
+  catch (err) { toast(friendlyError(err, "sending verification"), "error"); }
+}
+async function refreshVerify() {
+  if (!S.user) return;
+  try {
+    await reload(S.user);
+    S.user = auth.currentUser;
+    if (S.user?.emailVerified) {
+      await ensureProfile(true);
+      await loadRole();
+      renderProfileChrome();
+      toast("Email verified.", "success");
+      router();
+    } else {
+      toast("Still not verified.", "error");
+    }
+  } catch (err) { toast(friendlyError(err, "refreshing"), "error"); }
+}
+async function googleSignIn() {
+  authMsg("");
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (err) {
+    const code = err?.code || "";
+    if (["auth/popup-blocked","auth/operation-not-supported-in-this-environment","auth/cancelled-popup-request"].includes(code)) {
+      authMsg("Popup blocked. Redirecting to Google…", "info");
+      try { await signInWithRedirect(auth, provider); }
+      catch (re) { authMsg(friendlyError(re, "Google redirect"), "error"); }
+    } else if (code === "auth/popup-closed-by-user") {
+      authMsg("Sign-in cancelled.", "info");
+    } else {
+      authMsg(friendlyError(err, "Google sign-in"), "error");
+    }
+  }
+}
+function bindAuth() {
+  $$(".auth-tab").forEach(b => b.addEventListener("click", () => setAuthTab(b.dataset.authTab)));
+  els.loginForm?.addEventListener("submit", async e => {
+    e.preventDefault();
+    authMsg("");
+    const email = $("#loginEmail").value.trim();
+    const pw = $("#loginPassword").value;
+    if (!email || !pw) return authMsg("Enter email and password.");
+    const btn = els.loginForm.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = "Logging in…";
+    try { await signInWithEmailAndPassword(auth, email, pw); }
+    catch (err) { authMsg(friendlyError(err, "logging in")); }
+    finally { btn.disabled = false; btn.textContent = "Login"; }
+  });
+  els.signupForm?.addEventListener("submit", async e => {
+    e.preventDefault();
+    authMsg("");
+    const name = $("#signupName").value.trim();
+    const email = $("#signupEmail").value.trim();
+    const pw = $("#signupPassword").value;
+    if (!name || !email || !pw) return authMsg("Fill all fields.");
+    if (pw.length < 6) return authMsg("Password min 6 characters.");
+    const btn = els.signupForm.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = "Creating…";
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, pw);
+      await updateProfile(cred.user, { displayName: name });
+      await sendEmailVerification(cred.user);
+      authMsg("Account created. Verify your email.", "success");
+    } catch (err) { authMsg(friendlyError(err, "creating account")); }
+    finally { btn.disabled = false; btn.textContent = "Create account"; }
+  });
+  els.resetForm?.addEventListener("submit", async e => {
+    e.preventDefault();
+    authMsg("");
+    const email = $("#resetEmail").value.trim();
+    if (!email) return authMsg("Enter email.");
+    try { await sendPasswordResetEmail(auth, email); authMsg("Reset email sent.", "success"); }
+    catch (err) { authMsg(friendlyError(err, "sending reset")); }
+  });
+  els.googleBtn?.addEventListener("click", googleSignIn);
+  els.logoutBtn?.addEventListener("click", doLogout);
+  els.sidebarLogoutBtn?.addEventListener("click", doLogout);
+  els.mobileLogoutBtn?.addEventListener("click", doLogout);
+  els.resendVerifyBtn?.addEventListener("click", resendVerify);
+  els.refreshVerifyBtn?.addEventListener("click", refreshVerify);
+}
+
+/* ============ THEME & SHELL ============ */
+function setTheme(t) {
+  const theme = t === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("sajilo-theme", theme); } catch {}
+  if (els.themeToggle) els.themeToggle.textContent = theme === "dark" ? "☀" : "🌙";
+}
+function initTheme() {
+  let saved = "light";
+  try { saved = localStorage.getItem("sajilo-theme") || "light"; } catch {}
+  setTheme(saved);
+}
+function toggleSidebar(open) {
+  const isOpen = open ?? !els.sidebar.classList.contains("open");
+  els.sidebar.classList.toggle("open", isOpen);
+  els.sidebarBackdrop.classList.toggle("hidden", !isOpen);
+  els.menuToggle.setAttribute("aria-expanded", String(isOpen));
+}
+function bindShell() {
+  els.menuToggle?.addEventListener("click", () => toggleSidebar());
+  els.sidebarBackdrop?.addEventListener("click", () => toggleSidebar(false));
+  els.themeToggle?.addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    setTheme(cur === "dark" ? "light" : "dark");
+  });
+  els.profileBtn?.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = els.profileDropdown.classList.contains("hidden");
+    els.profileDropdown.classList.toggle("hidden", !open);
+    if (open) renderProfileChrome();
+  });
+  document.addEventListener("click", e => {
+    if (!els.profileDropdown?.contains(e.target) && e.target !== els.profileBtn) {
+      els.profileDropdown?.classList.add("hidden");
+    }
+  });
+  els.adminHeaderBtn?.addEventListener("click", () => go("/admin"));
+  $$("[data-nav]").forEach(a => a.addEventListener("click", () => toggleSidebar(false)));
+  window.addEventListener("hashchange", router);
+}
+
+/* ============ ROUTER ============ */
+async function router() {
+  const token = newToken();
+  cleanup();
+  const { segs, params } = parseRoute();
+  const name = segs[0] || "home";
+  activeNav(`/${segs.join("/")}`);
+
+  if (!S.user) { showAuth(); return; }
+  showShell();
+  renderProfileChrome();
+
+  if (!S.user.emailVerified && !["profile","settings","verify","admin"].includes(name)) {
+    setPage(verifyGate());
+    bindVerifyGate();
+    return;
+  }
+
+  try {
+    switch (name) {
+      case "home": await renderHome(token); break;
+      case "all-subjects": await renderAllSubjects(token); break;
+      case "my-subjects": await renderMySubjects(token); break;
+      case "subject": await renderSubjectDetail(segs[1], token); break;
+      case "chapter": await renderChapterDetail(segs[1], token); break;
+      case "material": await renderMaterial(segs[1], token); break;
+      case "practice": await renderPractice(params, token); break;
+      case "progress": await renderProgress(token); break;
+      case "saved": await renderSaved(token); break;
+      case "profile": renderProfile(); break;
+      case "settings": renderSettings(); break;
+      case "verify": setPage(verifyGate()); bindVerifyGate(); break;
+      case "admin": await renderAdmin(segs.slice(1), token); break;
+      default: setPage(emptyState("Page not found", `Route "${name}" does not exist.`, `<a class="btn btn-primary" href="#/home">Home</a>`));
+    }
+    if (!isStale(token)) { bindRetry(); window.scrollTo(0, 0); }
+  } catch (err) {
+    if (isStale(token)) return;
+    setPage(errorState("Page failed to load", friendlyError(err, "loading page")));
+    bindRetry();
+  }
+}
+
+function verifyGate() {
+  return `<div class="card" style="max-width:640px;margin:30px auto;text-align:center">
+    <div class="empty-icon">✉️</div>
+    <h2>Verify your email</h2>
+    <p class="muted">Signed in as <strong>${escapeHtml(S.user?.email || "")}</strong>.</p>
+    <div class="row" style="justify-content:center">
+      <button class="btn btn-primary" id="gateResend">Resend</button>
+      <button class="btn" id="gateRefresh">I have verified</button>
+    </div>
+    <a class="btn btn-ghost mt-16" href="#/profile">Profile</a>
+  </div>`;
+}
+function bindVerifyGate() {
+  $("#gateResend")?.addEventListener("click", resendVerify);
+  $("#gateRefresh")?.addEventListener("click", refreshVerify);
+}
+
+/* ============ HOME ============ */
+async function renderHome(token) {
+  setPage(spinner("Loading…"));
+  await Promise.all([loadSelectedSubjects(), loadExams()]);
+  if (isStale(token)) return;
+
+  const myExamIds = S.profile?.examIds || [];
+  const myExams = S.exams.filter(e => myExamIds.includes(e.id));
+  const today = await getTodaySession();
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Namaste, ${escapeHtml((S.profile?.displayName || S.user.displayName || "Student").split(" ")[0])} 👋</h1>
+    <p class="page-sub">${today ? `Today: ${today.questionsAttempted || 0} attempted, ${today.materialsRead || 0} read` : "Start your study today."}</p></div>
+    <a class="btn btn-primary" href="#/all-subjects">Browse subjects</a></div>
+
+    <div class="grid grid-2 mb-16">
+      <div class="card">
+        <h2 class="card-title">Quick actions</h2>
+        <div class="row">
+          <a class="btn" href="#/all-subjects">🌐 All Subjects</a>
+          <a class="btn" href="#/my-subjects">📚 My Subjects</a>
+          <a class="btn" href="#/progress">📈 Progress</a>
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="card-title">My target exams</h2>
+        ${myExams.length
+          ? `<div class="chip-list">${myExams.map(e => `<span class="chip">${escapeHtml(e.title || e.code || "Exam")}</span>`).join("")}</div>`
+          : `<p class="small muted mb-0">No exams yet. Add subjects from All Subjects.</p>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between mb-8"><h2 class="card-title mb-0">My selected subjects</h2><a class="btn btn-small" href="#/my-subjects">Manage</a></div>
+      ${S.selectedSubjects.length
+        ? `<div class="grid grid-2">${S.selectedSubjects.slice(0, 4).map(s => `<a class="card" style="box-shadow:none;text-decoration:none;color:var(--text)" href="#/subject/${encodeURIComponent(s.id)}">
+            <strong>${escapeHtml(s.title || "Subject")}</strong>
+            <p class="small muted mb-0 mt-8">Open to see chapters →</p>
+          </a>`).join("")}</div>`
+        : `<p class="small muted">No subjects selected. <a href="#/all-subjects">Browse all subjects →</a></p>`}
+    </div>
+  `);
+}
+
+/* ============ ALL SUBJECTS (student browse) ============ */
+async function loadAllSubjects() {
+  try {
+    const snap = await getDocs(query(collection(db, "subjects"), where("status","==","published"), limit(300)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn("All subjects load error", err);
+    return [];
+  }
+}
+async function loadSelectedSubjects() {
+  try {
+    const snap = await getDocs(collection(db, "users", S.user.uid, "selectedSubjects"));
+    S.selectedSubjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { S.selectedSubjects = []; }
+  return S.selectedSubjects;
+}
+async function loadExams() {
+  try {
+    const snap = await getDocs(query(collection(db, "exams"), where("status","==","published"), limit(50)));
+    S.exams = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { S.exams = []; }
+  return S.exams;
+}
+async function renderAllSubjects(token) {
+  setPage(spinner("Loading subjects…"));
+  const [all, selected] = await Promise.all([loadAllSubjects(), loadSelectedSubjects()]);
+  if (isStale(token)) return;
+  const selectedIds = new Set(selected.map(s => s.id));
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">All Subjects</h1>
+    <p class="page-sub">Browse all published subjects. Add any to your personal list.</p></div></div>
+    ${all.length === 0
+      ? emptyState("No subjects yet", "The administrator hasn't published any subjects. Check back soon.", `<a class="btn" href="#/home">Home</a>`)
+      : `<div class="grid grid-2">${all.map(s => {
+          const isMine = selectedIds.has(s.id);
+          return `<div class="card">
+            <div class="row-between"><strong>${escapeHtml(s.title || s.code || "Subject")}</strong>
+            ${isMine ? '<span class="badge green">In My Subjects</span>' : '<span class="badge">Not selected</span>'}</div>
+            <p class="small muted mt-8">${escapeHtml(s.description || "No description.")}</p>
+            <div class="row mt-8">
+              <a class="btn btn-small" href="#/subject/${encodeURIComponent(s.id)}">View</a>
+              <button class="btn btn-small ${isMine ? "btn-ghost" : "btn-primary"}" data-add-subject="${escapeHtml(s.id)}" data-add-title="${escapeHtml(s.title || "")}" data-added="${isMine ? "1" : "0"}">
+                ${isMine ? "Remove" : "+ Add to My Subjects"}
+              </button>
+            </div>
+          </div>`;
+        }).join("")}</div>`}
+  `);
+
+  $$("[data-add-subject]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    const sid = b.dataset.addSubject;
+    const added = b.dataset.added === "1";
+    try {
+      if (added) {
+        await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid));
+        toast("Removed from My Subjects.", "success");
+      } else {
+        await setDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid), {
+          subjectId: sid,
+          title: b.dataset.addTitle || "",
+          addedAt: serverTimestamp()
+        });
+        toast("Added to My Subjects.", "success");
+      }
+      router();
+    } catch (err) {
+      console.error("Save subject error", err);
+      toast(friendlyError(err, "saving subject"), "error", 5000);
+      b.disabled = false;
+    }
+  }));
+}
+
+/* ============ MY SUBJECTS ============ */
+async function renderMySubjects(token) {
+  setPage(spinner("Loading…"));
+  await loadSelectedSubjects();
+  if (isStale(token)) return;
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">My Subjects</h1>
+    <p class="page-sub">Your selected subjects.</p></div>
+    <a class="btn btn-primary" href="#/all-subjects">+ Add more</a></div>
+    ${S.selectedSubjects.length === 0
+      ? emptyState("No subjects yet", "Add subjects from All Subjects page.", `<a class="btn btn-primary" href="#/all-subjects">Browse all subjects</a>`)
+      : `<div class="grid grid-2">${S.selectedSubjects.map(s => `
+          <div class="card">
+            <div class="row-between"><strong>${escapeHtml(s.title || "Subject")}</strong>
+              <button class="btn btn-small btn-danger" data-remove="${escapeHtml(s.id)}">Remove</button>
+            </div>
+            <p class="small muted mt-8 mb-8">Open to see chapters and study materials.</p>
+            <a class="btn btn-small btn-primary" href="#/subject/${encodeURIComponent(s.id)}">Open</a>
+          </div>`).join("")}</div>`}
+  `);
+
+  $$("[data-remove]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog("Remove this subject from My Subjects?", { danger: true, confirmText: "Remove" }))) return;
+    try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.remove)); router(); }
+    catch (err) { toast(friendlyError(err, "removing"), "error"); }
+  }));
+}
+
+/* ============ SUBJECT DETAIL (student) ============ */
+async function renderSubjectDetail(id, token) {
+  if (!id) return setPage(errorState("Not found", "No subject specified."));
+  setPage(spinner("Loading subject…"));
+  let subject = null;
+  try { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) subject = { id: s.id, ...s.data() }; }
+  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading subject"))); }
+  if (isStale(token)) return;
+  if (!subject) return setPage(emptyState("Subject not found", "May be unpublished."));
+
+  let chapters = [];
+  try {
+    const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",id), where("status","==","published"), limit(200)));
+    chapters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+  } catch (err) { console.warn("Chapters load error", err); }
+
+  setPage(`
+    <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <span>${escapeHtml(subject.title || "")}</span></div>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(subject.title || "Subject")}</h1>
+    <p class="page-sub">${escapeHtml(subject.description || "")}</p></div></div>
+    ${chapters.length === 0
+      ? emptyState("No chapters yet", "The administrator hasn't added published chapters to this subject yet.")
+      : `<div class="stack">${chapters.map(c => `<div class="card">
+          <div class="row-between"><div><strong>${c.chapterNumber ? `Chapter ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
+          <p class="small muted mb-0 mt-8">${escapeHtml(c.description || "")}</p></div>
+          <a class="btn btn-primary btn-small" href="#/chapter/${encodeURIComponent(c.id)}">Open</a></div>
+        </div>`).join("")}</div>`}
+  `);
+}
+
+/* ============ CHAPTER DETAIL (student) ============ */
+async function renderChapterDetail(id, token) {
+  if (!id) return setPage(errorState("Not found", "No chapter specified."));
+  setPage(spinner("Loading chapter…"));
+  let chapter = null;
+  try { const s = await getDoc(doc(db, "chapters", id)); if (s.exists()) chapter = { id: s.id, ...s.data() }; }
+  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading chapter"))); }
+  if (isStale(token)) return;
+  if (!chapter) return setPage(emptyState("Chapter not found", "May be unpublished."));
+
+  const [matSnap, qSnap] = await Promise.all([
+    getDocs(query(collection(db, "materials"), where("chapterId","==",id), where("status","==","published"), limit(100))).catch(() => null),
+    getDocs(query(collection(db, "questions"), where("chapterId","==",id), where("status","==","published"), limit(500))).catch(() => null)
+  ]);
+  if (isStale(token)) return;
+  const materials = (matSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const questions = (qSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+  const byLevel = { L1: questions.filter(q => q.level === "L1").length, L2: questions.filter(q => q.level === "L2").length, L3: questions.filter(q => q.level === "L3").length };
+
+  // Siblings for prev/next
+  let siblings = [];
+  try {
+    const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",chapter.subjectId || ""), where("status","==","published"), limit(200)));
+    siblings = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+  } catch {}
+  const idx = siblings.findIndex(c => c.id === id);
+  const prev = idx > 0 ? siblings[idx - 1] : null;
+  const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
+
+  setPage(`
+    <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <a href="#/subject/${encodeURIComponent(chapter.subjectId || "")}">Subject</a> / <span>${escapeHtml(chapter.title || "Chapter")}</span></div>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(chapter.title || "Chapter")}</h1>
+    <p class="page-sub">${escapeHtml(chapter.description || "")}</p></div></div>
+
+    <div class="card mb-16">
+      <h2 class="card-title">Study Materials (${materials.length})</h2>
+      ${materials.length === 0
+        ? `<p class="small muted">No published materials.</p>`
+        : materials.map(m => `<div class="list-item">
+            <div class="list-item-main">
+              <p class="list-item-title">${escapeHtml(m.title || "Material")}</p>
+              <div class="list-item-meta">
+                <span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span>
+                ${m.importance && m.importance !== "normal" ? `<span class="badge ${escapeHtml(m.importance)}">${escapeHtml(m.importance)}</span>` : ""}
+              </div>
+            </div>
+            <a class="btn btn-small" href="#/material/${encodeURIComponent(m.id)}">Read</a>
+          </div>`).join("")}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Practice MCQs</h2>
+      <div class="grid grid-3">
+        ${["L1","L2","L3"].map(l => `<div class="card" style="box-shadow:none;text-align:center">
+          <span class="badge ${l}">${levelLabel(l)}</span>
+          <p class="stat-value mt-8">${byLevel[l]}</p>
+          <p class="tiny muted">questions</p>
+          <a class="btn btn-small ${byLevel[l] ? "btn-primary" : ""}" href="#/practice?chapter=${encodeURIComponent(id)}&level=${l}" ${byLevel[l] ? "" : 'style="opacity:.5;pointer-events:none"'}>Practice</a>
+        </div>`).join("")}
+      </div>
+      <div class="mt-16"><a class="btn btn-primary" href="#/practice?chapter=${encodeURIComponent(id)}">Practice all (${questions.length})</a></div>
+    </div>
+
+    <div class="row mt-16" style="justify-content:space-between">
+      ${prev ? `<a class="btn" href="#/chapter/${encodeURIComponent(prev.id)}">← ${escapeHtml(prev.title || "Previous")}</a>` : "<span></span>"}
+      ${next ? `<a class="btn" href="#/chapter/${encodeURIComponent(next.id)}">${escapeHtml(next.title || "Next")} →</a>` : "<span></span>"}
+    </div>
+  `);
+}
+
+/* ============ MATERIAL READER ============ */
+async function renderMaterial(id, token) {
+  if (!id) return setPage(errorState("Not found", "No material specified."));
+  setPage(spinner("Loading…"));
+  let m = null;
+  try { const s = await getDoc(doc(db, "materials", id)); if (s.exists()) m = { id: s.id, ...s.data() }; }
+  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading material"))); }
+  if (isStale(token)) return;
+  if (!m) return setPage(emptyState("Material not found", "May be unpublished."));
+
+  const html = m.html ? sanitizeHtml(m.html) : (m.content ? sanitizeHtml(m.content) : `<p class="muted">No content.</p>`);
+  const resources = Array.isArray(m.resources) ? m.resources : [];
+
+  setPage(`
+    <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <a href="#/chapter/${encodeURIComponent(m.chapterId || "")}">Chapter</a> / <span>${escapeHtml(m.title || "Material")}</span></div>
+    <div class="card">
+      <div class="row-between">
+        <div class="row"><span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span></div>
+        <div class="row">
+          <button class="btn btn-small" data-font="-">A−</button>
+          <button class="btn btn-small" data-font="+">A+</button>
+          <button class="btn btn-small" onclick="window.print()">Print</button>
+        </div>
+      </div>
+      <h1 class="page-title mt-16">${escapeHtml(m.title || "Study material")}</h1>
+      <div class="reader-content mt-16" id="readerContent">${html}</div>
+    </div>
+
+    ${resources.length ? `<div class="card"><h2 class="card-title">Resources</h2>
+      ${resources.map(r => {
+        const url = safeUrl(r.url);
+        if (!url) return "";
+        return `<div class="list-item"><div class="list-item-main"><p class="list-item-title">${escapeHtml(r.title || r.url)}</p><div class="list-item-meta">${escapeHtml(r.type || "link")}</div></div><a class="btn btn-small" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a></div>`;
+      }).join("")}
+    </div>` : ""}
+
+    <div class="row mt-16 no-print">
+      <button class="btn btn-primary" id="markReadBtn">Mark as read</button>
+      <a class="btn" href="#/practice?chapter=${encodeURIComponent(m.chapterId || "")}&level=${encodeURIComponent(m.level || "L1")}">Practice MCQs</a>
+    </div>
+  `);
+
+  $$("[data-font]").forEach(b => b.addEventListener("click", () => {
+    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--reader-size")) || 17;
+    const next = b.dataset.font === "+" ? Math.min(24, cur + 1) : Math.max(14, cur - 1);
+    document.documentElement.style.setProperty("--reader-size", `${next}px`);
+  }));
+
+  $("#markReadBtn")?.addEventListener("click", async () => {
+    try {
+      await setDoc(doc(db, "users", S.user.uid, "materialProgress", id), {
+        materialId: id, title: m.title || "", chapterId: m.chapterId || "", subjectId: m.subjectId || "",
+        level: m.level || "L1", status: "read", readAt: serverTimestamp(), updatedAt: serverTimestamp()
+      }, { merge: true });
+      await touchSession({ materialsRead: 1 });
+      toast("Marked as read.", "success");
+    } catch (err) { toast(friendlyError(err, "saving progress"), "error"); }
+  });
+}
+
+/* ============ PRACTICE ============ */
+async function renderPractice(params, token) {
+  setPage(spinner("Loading questions…"));
+  const chapterId = params.get("chapter");
+  const level = params.get("level");
+  const ids = params.get("ids");
+
+  let questions = [];
+  try {
+    if (ids) {
+      for (const id of ids.split(",").slice(0, 100)) {
+        const s = await getDoc(doc(db, "questions", id.trim()));
+        if (s.exists()) questions.push({ id: s.id, ...s.data() });
+      }
+    } else if (chapterId) {
+      const snap = await getDocs(query(collection(db, "questions"), where("chapterId","==",chapterId), where("status","==","published"), limit(500)));
+      questions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (level) questions = questions.filter(q => q.level === level);
+    }
+  } catch (err) {
+    return setPage(errorState("Error", friendlyError(err, "loading questions")));
+  }
+  if (isStale(token)) return;
+  if (!questions.length) return setPage(emptyState("No questions", "No published questions match this scope.", `<a class="btn" href="#/all-subjects">Browse subjects</a>`));
+
+  questions = questions.sort(() => Math.random() - 0.5);
+  S.practice = { questions, index: 0, selected: null, revealed: false, recorded: new Set() };
+  renderPracticeQuestion();
+  bindPracticeKeys();
+}
+
+function renderPracticeQuestion() {
+  const p = S.practice;
+  if (!p) return;
+  const q = p.questions[p.index];
+  const options = q.options || [];
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Practice</h1>
+    <p class="page-sub">Q ${p.index + 1} of ${p.questions.length}</p></div><a class="btn" href="#/all-subjects">Back</a></div>
+    <div class="question-card" style="max-width:840px;margin:0 auto">
+      <div class="card">
+        <div class="row mb-16">
+          <span class="badge ${escapeHtml(q.level || "L1")}">${levelLabel(q.level)}</span>
+          ${q.importance && q.importance !== "normal" ? `<span class="badge ${escapeHtml(q.importance)}">${escapeHtml(q.importance)}</span>` : ""}
+        </div>
+        <div class="question-stem">${escapeHtml(q.questionText || "Question")}</div>
+        <div class="option-list" id="optList">
+          ${options.map((opt, i) => {
+            const key = opt.id || String.fromCharCode(97 + i);
+            const sel = p.selected === key;
+            const correct = p.revealed && q.correctOptionId === key;
+            const wrong = p.revealed && sel && q.correctOptionId !== key;
+            return `<button class="option-btn ${sel ? "selected" : ""} ${correct ? "correct" : ""} ${wrong ? "wrong" : ""}" data-opt="${escapeHtml(key)}" type="button">
+              <span class="option-key">${String.fromCharCode(65 + i)}</span>
+              <span>${escapeHtml(opt.text || "")}</span>
+            </button>`;
+          }).join("")}
+        </div>
+        ${p.revealed ? `<div class="explanation-box">
+          <h4>Correct answer: ${escapeHtml(options.find(o => o.id === q.correctOptionId)?.text || "—")}</h4>
+          <p>${sanitizeHtml(q.explanation || "No explanation.")}</p>
+        </div>` : ""}
+        <div class="row mt-16" style="justify-content:space-between">
+          <button class="btn" id="prevBtn" ${p.index === 0 ? "disabled" : ""}>← Previous</button>
+          <button class="btn btn-primary" id="checkBtn">${p.revealed ? "Hide" : "Check Answer"}</button>
+          <button class="btn" id="nextBtn" ${p.index >= p.questions.length - 1 ? "disabled" : ""}>Next →</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  $$("[data-opt]").forEach(b => b.addEventListener("click", () => {
+    if (p.revealed) return;
+    p.selected = b.dataset.opt;
+    renderPracticeQuestion();
+  }));
+  $("#checkBtn")?.addEventListener("click", async () => {
+    if (p.revealed) { p.revealed = false; renderPracticeQuestion(); return; }
+    if (!p.selected) return toast("Select an option.", "error");
+    p.revealed = true;
+    if (!p.recorded.has(q.id)) { p.recorded.add(q.id); await recordAttempt(q, p.selected); }
+    renderPracticeQuestion();
+  });
+  $("#prevBtn")?.addEventListener("click", () => { if (p.index > 0) { p.index--; p.selected = null; p.revealed = false; renderPracticeQuestion(); } });
+  $("#nextBtn")?.addEventListener("click", () => { if (p.index < p.questions.length - 1) { p.index++; p.selected = null; p.revealed = false; renderPracticeQuestion(); } });
+}
+
+function bindPracticeKeys() {
+  const handler = e => {
+    if (["input","textarea","select"].includes((e.target.tagName || "").toLowerCase())) return;
+    const p = S.practice; if (!p) return;
+    const k = e.key.toLowerCase();
+    if (k === "j" && p.index < p.questions.length - 1) { p.index++; p.selected = null; p.revealed = false; renderPracticeQuestion(); }
+    else if (k === "k" && p.index > 0) { p.index--; p.selected = null; p.revealed = false; renderPracticeQuestion(); }
+    else if (e.key === " ") { e.preventDefault(); $("#checkBtn")?.click(); }
+  };
+  document.addEventListener("keydown", handler);
+  S.pageCleanup = () => document.removeEventListener("keydown", handler);
+}
+
+async function recordAttempt(q, selected) {
+  const correct = selected === q.correctOptionId;
+  const ref = doc(db, "users", S.user.uid, "questionProgress", q.id);
+  try {
+    const snap = await getDoc(ref);
+    const d = snap.exists() ? snap.data() : {};
+    await setDoc(ref, {
+      questionId: q.id, title: q.questionText || "", chapterId: q.chapterId || "", subjectId: q.subjectId || "",
+      level: q.level || "L1", attempts: (d.attempts || 0) + 1, correct: (d.correct || 0) + (correct ? 1 : 0),
+      lastCorrect: correct, updatedAt: serverTimestamp()
+    }, { merge: true });
+    await touchSession({ questionsAttempted: 1 });
+  } catch (err) { console.warn("Save attempt failed", err); }
+}
+
+async function touchSession(updates) {
+  if (!S.user) return;
+  const key = nepalDateKey();
+  try {
+    const ref = doc(db, "users", S.user.uid, "studySessions", key);
+    const snap = await getDoc(ref);
+    const d = snap.exists() ? snap.data() : {};
+    const merged = { dateKey: key, updatedAt: serverTimestamp() };
+    Object.entries(updates).forEach(([k, v]) => { merged[k] = (d[k] || 0) + (typeof v === "number" ? v : 0); });
+    await setDoc(ref, merged, { merge: true });
+  } catch (err) { console.warn("Session save failed", err); }
+}
+async function getTodaySession() {
+  if (!S.user) return null;
+  try { const s = await getDoc(doc(db, "users", S.user.uid, "studySessions", nepalDateKey())); return s.exists() ? s.data() : null; }
+  catch { return null; }
+}
+
+/* ============ PROGRESS, SAVED, PROFILE, SETTINGS ============ */
+async function renderProgress(token) {
+  setPage(spinner("Loading…"));
+  const [readSnap, qpSnap] = await Promise.all([
+    getDocs(query(collection(db, "users", S.user.uid, "materialProgress"), where("status","==","read"), limit(500))).catch(() => null),
+    getDocs(query(collection(db, "users", S.user.uid, "questionProgress"), limit(500))).catch(() => null)
+  ]);
+  if (isStale(token)) return;
+  const read = readSnap?.size || 0;
+  const qp = (qpSnap?.docs || []).map(d => d.data());
+  const attempted = qp.filter(q => (q.attempts || 0) > 0).length;
+  const correct = qp.reduce((a, q) => a + (q.correct || 0), 0);
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Progress</h1><p class="page-sub">Real data only.</p></div></div>
+    <div class="grid grid-4 mb-16">
+      <div class="stat-card"><div class="stat-value">${read}</div><div class="stat-label">Materials read</div></div>
+      <div class="stat-card"><div class="stat-value">${attempted}</div><div class="stat-label">Questions attempted</div></div>
+      <div class="stat-card"><div class="stat-value">${correct}</div><div class="stat-label">Correct answers</div></div>
+      <div class="stat-card"><div class="stat-value">${attempted ? Math.round(correct / Math.max(1, attempted) * 100) : 0}%</div><div class="stat-label">Accuracy</div></div>
+    </div>
+    <div class="card"><h2 class="card-title">About</h2>
+      <p class="small muted">Reading and mastery are separate. Mastery requires repeated correct recall.</p>
+    </div>
+  `);
+}
+
+async function renderSaved(token) {
+  setPage(spinner("Loading…"));
+  const snap = await getDocs(query(collection(db, "users", S.user.uid, "savedItems"), limit(100))).catch(() => null);
+  if (isStale(token)) return;
+  const items = (snap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Saved</h1></div></div>
+    ${items.length ? `<div class="stack">${items.map(i => `<div class="card"><strong>${escapeHtml(i.title || "Saved")}</strong>${i.href ? `<a class="btn btn-small mt-8" href="${escapeHtml(i.href)}">Open</a>` : ""}</div>`).join("")}</div>` : emptyState("Nothing saved yet", "Bookmark materials or questions to see them here.")}
+  `);
+}
+
+function renderProfile() {
+  const u = S.user;
+  const name = S.profile?.displayName || u.displayName || u.email?.split("@")[0] || "Student";
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">My Profile</h1></div>
+    <button class="btn btn-danger" id="profileLogout">Logout</button></div>
+    <div class="card mb-16">
+      <div class="row">
+        <span class="avatar" style="width:70px;height:70px;font-size:1.6rem">${escapeHtml((name.charAt(0) || "S").toUpperCase())}</span>
+        <div><h2 class="mb-0">${escapeHtml(name)}</h2>
+        <p class="small muted mb-0">${escapeHtml(u.email || "")}</p>
+        <span class="badge ${u.emailVerified ? "green" : "amber"}">${u.emailVerified ? "✓ Verified" : "⚠ Unverified"}</span>
+        ${S.isOwner ? ' <span class="badge">Owner</span>' : ""}</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">Account details</h2>
+      <div class="form-grid">
+        <div><label>Display name</label><input id="profName" value="${escapeHtml(S.profile?.displayName || name)}"></div>
+        <div><label>Daily goal (questions)</label><input id="profGoal" type="number" min="5" max="200" value="${S.profile?.dailyGoal || 20}"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" id="profSave">Save</button></div>
+    </div>
+  `);
+  $("#profileLogout")?.addEventListener("click", doLogout);
+  $("#profSave")?.addEventListener("click", async () => {
+    try {
+      const n = $("#profName").value.trim();
+      const g = Number($("#profGoal").value || 20);
+      await updateProfile(u, { displayName: n });
+      await updateDoc(doc(db, "users", u.uid), { displayName: n, dailyGoal: g, updatedAt: serverTimestamp() });
+      S.profile = { ...(S.profile || {}), displayName: n, dailyGoal: g };
+      renderProfileChrome();
+      toast("Saved.", "success");
+    } catch (err) { toast(friendlyError(err, "saving"), "error"); }
+  });
+}
+
+function renderSettings() {
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Settings</h1></div></div>
+    <div class="card mb-16">
+      <h2 class="card-title">Appearance</h2>
+      <div class="row">
+        <button class="btn" onclick="document.getElementById('themeToggle').click()">Toggle Dark/Light</button>
+        <button class="btn btn-danger" onclick="document.getElementById('logoutBtn').click()">Logout</button>
+      </div>
+    </div>
+  `);
+}
+
+/* ============ ADMIN ============ */
+async function renderAdmin(segs, token) {
+  if (!S.isOwner && !S.isAdmin) return setPage(emptyState("Admin only", "Access restricted."));
+  if (!S.user.emailVerified) {
+    setPage(`<div class="card"><h2>Verify email to use admin</h2><button class="btn btn-primary" id="vBtn">Resend</button></div>`);
+    $("#vBtn")?.addEventListener("click", resendVerify);
+    return;
+  }
+
+  const section = segs[0];
+
+  if (!section) {
+    setPage(`
+      <div class="page-head"><div><h1 class="page-title">Admin Panel</h1><p class="page-sub">Manage all content.</p></div><a class="btn" href="#/home">Exit</a></div>
+      <div class="admin-grid">
+        <a href="#/admin/subjects" class="admin-card"><strong>📚 Subjects</strong><span>Create, edit, delete subjects</span></a>
+        <a href="#/admin/import" class="admin-card"><strong>📦 JSON Import/Export</strong><span>Bulk load content</span></a>
+      </div>
+    `);
+    return;
+  }
+
+  if (section === "subjects") return renderAdminSubjects(token);
+  if (section === "subject") return renderAdminSubjectDetail(segs[1], token);
+  if (section === "chapter") return renderAdminChapterDetail(segs[1], token);
+  if (section === "import") return renderAdminImport(token);
+
+  setPage(errorState("Unknown admin section", "Section does not exist."));
+}
+
+/* ---- Admin: Subjects list ---- */
+async function renderAdminSubjects(token) {
+  setPage(spinner("Loading subjects…"));
+  const snap = await getDocs(query(collection(db, "subjects"), limit(300))).catch(() => null);
+  if (isStale(token)) return;
+  const subjects = (snap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">Manage Subjects</h1>
+    <p class="page-sub">${subjects.length} total</p></div>
+    <div class="row"><a class="btn" href="#/admin">← Back</a><button class="btn btn-primary" id="newSubjectBtn">+ New Subject</button></div></div>
+    ${subjects.length === 0
+      ? emptyState("No subjects yet", "Create your first subject to start building content.", `<button class="btn btn-primary" id="newSubjectEmpty">+ New Subject</button>`)
+      : `<div class="stack">${subjects.map(s => `<div class="card">
+          <div class="row-between">
+            <div><strong>${escapeHtml(s.title || "Untitled")}</strong>
+              <div class="list-item-meta mt-8">${statusBadge(s.status)}</div>
+            </div>
+            <div class="row">
+              <a class="btn btn-small btn-primary" href="#/admin/subject/${encodeURIComponent(s.id)}">Manage Chapters</a>
+              <button class="btn btn-small" data-edit-sub="${escapeHtml(s.id)}">Edit</button>
+              <button class="btn btn-small btn-danger" data-del-sub="${escapeHtml(s.id)}" data-del-title="${escapeHtml(s.title || "")}">Delete</button>
+            </div>
+          </div>
+        </div>`).join("")}</div>`}
+  `);
+
+  const openNew = () => openSubjectForm(null);
+  $("#newSubjectBtn")?.addEventListener("click", openNew);
+  $("#newSubjectEmpty")?.addEventListener("click", openNew);
+  $$("[data-edit-sub]").forEach(b => b.addEventListener("click", () => openSubjectForm(b.dataset.editSub)));
+  $$("[data-del-sub]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog(`Delete subject "${b.dataset.delTitle}"? All chapters, materials and MCQs inside will remain orphaned in Firestore but will no longer be visible. This cannot be undone.`, { danger: true, confirmText: "Delete" }))) return;
+    try {
+      await deleteDoc(doc(db, "subjects", b.dataset.delSub));
+      toast("Subject deleted.", "success");
+      router();
+    } catch (err) { toast(friendlyError(err, "deleting"), "error"); }
+  }));
+}
+
+function openSubjectForm(id) {
+  const fetchExisting = async () => {
+    if (!id) return {};
+    const s = await getDoc(doc(db, "subjects", id));
+    return s.exists() ? s.data() : {};
+  };
+  fetchExisting().then(existing => {
+    openModal(`
+      <div class="modal-head"><h2>${id ? "Edit" : "New"} Subject</h2><button class="modal-close" data-modal-close>✕</button></div>
+      <div class="form-grid">
+        <div><label>Title <span class="required">*</span></label><input id="subTitle" value="${escapeHtml(existing.title || "")}" placeholder="e.g., General Knowledge"></div>
+        <div><label>Code (optional)</label><input id="subCode" value="${escapeHtml(existing.code || "")}"></div>
+        <div><label>Description</label><textarea id="subDesc">${escapeHtml(existing.description || "")}</textarea></div>
+        <div><label>Order</label><input id="subOrder" type="number" value="${existing.order || 0}"></div>
+        <div><label>Status</label><select id="subStatus">
+          <option value="draft" ${existing.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${existing.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${existing.status === "archived" ? "selected" : ""}>Archived</option>
+        </select></div>
+      </div>
+      <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveSub">Save</button></div>
+    `, true);
+
+    $("#saveSub").onclick = async () => {
+      const btn = $("#saveSub");
+      btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        const title = $("#subTitle").value.trim();
+        if (!title) { toast("Title is required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = {
+          title, code: $("#subCode").value.trim(), description: $("#subDesc").value.trim(),
+          order: Number($("#subOrder").value || 0), status: $("#subStatus").value,
+          updatedAt: serverTimestamp()
+        };
+        if (!id) data.createdAt = serverTimestamp();
+        const ref = id ? doc(db, "subjects", id) : doc(collection(db, "subjects"));
+        await setDoc(ref, data, { merge: true });
+        toast("Subject saved.", "success");
+        closeModal();
+        router();
+      } catch (err) {
+        console.error("Save subject error", err);
+        toast(friendlyError(err, "saving subject"), "error", 5000);
+        btn.disabled = false; btn.textContent = "Save";
+      }
+    };
+  });
+}
+
+/* ---- Admin: Subject detail (manage chapters) ---- */
+async function renderAdminSubjectDetail(subjectId, token) {
+  if (!subjectId) return setPage(errorState("Not found", "No subject ID."));
+  setPage(spinner("Loading…"));
+  let subject = null;
+  try { const s = await getDoc(doc(db, "subjects", subjectId)); if (s.exists()) subject = { id: s.id, ...s.data() }; }
+  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading"))); }
+  if (isStale(token)) return;
+  if (!subject) return setPage(emptyState("Subject not found", "May have been deleted."));
+
+  const chSnap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",subjectId), limit(300))).catch(() => null);
+  if (isStale(token)) return;
+  const chapters = (chSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+
+  setPage(`
+    <div class="breadcrumbs"><a href="#/admin/subjects">Subjects</a> / <span>${escapeHtml(subject.title || "")}</span></div>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(subject.title || "Subject")} — Chapters</h1>
+    <p class="page-sub">${chapters.length} chapters</p></div>
+    <div class="row"><a class="btn" href="#/admin/subjects">← Subjects</a><button class="btn btn-primary" id="newChBtn">+ New Chapter</button></div></div>
+    ${chapters.length === 0
+      ? emptyState("No chapters yet", "Create your first chapter.", `<button class="btn btn-primary" id="newChEmpty">+ New Chapter</button>`)
+      : `<div class="stack">${chapters.map(c => `<div class="card">
+          <div class="row-between">
+            <div><strong>${c.chapterNumber ? `Ch ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
+              <div class="list-item-meta mt-8">${statusBadge(c.status)}</div>
+            </div>
+            <div class="row">
+              <a class="btn btn-small btn-primary" href="#/admin/chapter/${encodeURIComponent(c.id)}">Open (Materials + MCQs)</a>
+              <button class="btn btn-small" data-edit-ch="${escapeHtml(c.id)}">Edit</button>
+              <button class="btn btn-small btn-danger" data-del-ch="${escapeHtml(c.id)}" data-del-title="${escapeHtml(c.title || "")}">Delete</button>
+            </div>
+          </div>
+        </div>`).join("")}</div>`}
+  `);
+
+  const openNew = () => openChapterForm(subjectId, null);
+  $("#newChBtn")?.addEventListener("click", openNew);
+  $("#newChEmpty")?.addEventListener("click", openNew);
+  $$("[data-edit-ch]").forEach(b => b.addEventListener("click", () => openChapterForm(subjectId, b.dataset.editCh)));
+  $$("[data-del-ch]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog(`Delete chapter "${b.dataset.delTitle}"?`, { danger: true, confirmText: "Delete" }))) return;
+    try { await deleteDoc(doc(db, "chapters", b.dataset.delCh)); toast("Deleted.", "success"); router(); }
+    catch (err) { toast(friendlyError(err, "deleting"), "error"); }
+  }));
+}
+
+function openChapterForm(subjectId, id) {
+  (async () => {
+    let existing = {};
+    if (id) { const s = await getDoc(doc(db, "chapters", id)); if (s.exists()) existing = s.data(); }
+    openModal(`
+      <div class="modal-head"><h2>${id ? "Edit" : "New"} Chapter</h2><button class="modal-close" data-modal-close>✕</button></div>
+      <div class="form-grid">
+        <div><label>Chapter number</label><input id="chNum" type="number" value="${existing.chapterNumber || 1}"></div>
+        <div><label>Title <span class="required">*</span></label><input id="chTitle" value="${escapeHtml(existing.title || "")}"></div>
+        <div><label>Description</label><textarea id="chDesc">${escapeHtml(existing.description || "")}</textarea></div>
+        <div><label>Status</label><select id="chStatus">
+          <option value="draft" ${existing.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${existing.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${existing.status === "archived" ? "selected" : ""}>Archived</option>
+        </select></div>
+      </div>
+      <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveCh">Save</button></div>
+    `, true);
+    $("#saveCh").onclick = async () => {
+      const btn = $("#saveCh"); btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        const title = $("#chTitle").value.trim();
+        if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = {
+          title, chapterNumber: Number($("#chNum").value || 1), description: $("#chDesc").value.trim(),
+          subjectId, status: $("#chStatus").value, updatedAt: serverTimestamp()
+        };
+        if (!id) data.createdAt = serverTimestamp();
+        const ref = id ? doc(db, "chapters", id) : doc(collection(db, "chapters"));
+        await setDoc(ref, data, { merge: true });
+        toast("Chapter saved.", "success");
+        closeModal();
+        router();
+      } catch (err) { toast(friendlyError(err, "saving chapter"), "error"); btn.disabled = false; btn.textContent = "Save"; }
+    };
+  })();
+}
+
+/* ---- Admin: Chapter detail (materials + MCQs) ---- */
+async function renderAdminChapterDetail(chapterId, token) {
+  if (!chapterId) return setPage(errorState("Not found", "No chapter ID."));
+  setPage(spinner("Loading chapter…"));
+  let chapter = null;
+  try { const s = await getDoc(doc(db, "chapters", chapterId)); if (s.exists()) chapter = { id: s.id, ...s.data() }; }
+  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading"))); }
+  if (isStale(token)) return;
+  if (!chapter) return setPage(emptyState("Chapter not found", "May have been deleted."));
+
+  const [matSnap, qSnap] = await Promise.all([
+    getDocs(query(collection(db, "materials"), where("chapterId","==",chapterId), limit(100))).catch(() => null),
+    getDocs(query(collection(db, "questions"), where("chapterId","==",chapterId), limit(500))).catch(() => null)
+  ]);
+  if (isStale(token)) return;
+  const materials = (matSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const questions = (qSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+  const lc = { L1: questions.filter(q => q.level === "L1").length, L2: questions.filter(q => q.level === "L2").length, L3: questions.filter(q => q.level === "L3").length };
+
+  setPage(`
+    <div class="breadcrumbs"><a href="#/admin/subjects">Subjects</a> / <a href="#/admin/subject/${encodeURIComponent(chapter.subjectId || "")}">Chapters</a> / <span>${escapeHtml(chapter.title || "")}</span></div>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(chapter.title || "Chapter")}</h1>
+    <p class="page-sub">Manage materials and MCQs</p></div>
+    <a class="btn" href="#/admin/subject/${encodeURIComponent(chapter.subjectId || "")}">← Back</a></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="materials">📖 Materials (${materials.length})</button>
+      <button class="tab" data-tab="mcqs">❓ MCQs (${questions.length})</button>
+    </div>
+
+    <div id="tabContent"></div>
+  `);
+
+  const renderTab = (tab) => {
+    $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+    const box = $("#tabContent");
+    if (tab === "materials") {
+      box.innerHTML = `
+        <div class="row mb-16">
+          <button class="btn btn-primary" id="addMatBtn">+ Add Material</button>
+          <span style="flex:1"></span>
+          <input type="file" id="matImportFile" accept=".json" style="display:none">
+          <button class="btn" id="matImportBtn">📥 Import Materials JSON</button>
+          <button class="btn" id="matExportBtn">📤 Export Materials JSON</button>
+        </div>
+        ${materials.length === 0
+          ? emptyState("No materials yet", "Add your first material with HTML content.", "")
+          : `<div class="stack">${materials.map(m => `<div class="card">
+              <div class="row-between">
+                <div><strong>${escapeHtml(m.title || "Untitled")}</strong>
+                  <div class="list-item-meta mt-8">
+                    <span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span>
+                    ${statusBadge(m.status)}
+                  </div>
+                </div>
+                <div class="row">
+                  <button class="btn btn-small" data-preview-mat="${escapeHtml(m.id)}">Preview</button>
+                  <button class="btn btn-small" data-edit-mat="${escapeHtml(m.id)}">Edit</button>
+                  <button class="btn btn-small btn-danger" data-del-mat="${escapeHtml(m.id)}">Delete</button>
+                </div>
+              </div>
+            </div>`).join("")}</div>`}
+      `;
+      $("#addMatBtn").onclick = () => openMaterialForm(chapterId, null, chapter.subjectId || "");
+      $$("[data-edit-mat]").forEach(b => b.addEventListener("click", () => openMaterialForm(chapterId, b.dataset.editMat, chapter.subjectId || "")));
+      $$("[data-preview-mat]").forEach(b => b.addEventListener("click", () => previewMaterial(b.dataset.previewMat)));
+      $$("[data-del-mat]").forEach(b => b.addEventListener("click", async () => {
+        if (!(await confirmDialog("Delete this material?", { danger: true, confirmText: "Delete" }))) return;
+        try { await deleteDoc(doc(db, "materials", b.dataset.delMat)); toast("Deleted.", "success"); router(); }
+        catch (err) { toast(friendlyError(err, "deleting"), "error"); }
+      }));
+      $("#matImportBtn").onclick = () => $("#matImportFile").click();
+      $("#matImportFile").onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const items = Array.isArray(parsed) ? parsed : (parsed.materials || [parsed]);
+          if (!items.length) return toast("No materials found.", "error");
+          const ok = await confirmDialog(`Import ${items.length} material(s) into this chapter?`, { confirmText: "Import" });
+          if (!ok) return;
+          for (const m of items) {
+            const ref = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
+            await setDoc(ref, {
+              title: m.title || "Imported", html: m.html || m.content || "",
+              level: m.level || "L1", importance: m.importance || "normal",
+              resources: m.resources || [], chapterId, subjectId: chapter.subjectId || "",
+              order: Number(m.order || 0), status: m.status || "draft",
+              createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+          toast(`Imported ${items.length} material(s).`, "success");
+          router();
+        } catch (err) { toast(friendlyError(err, "importing"), "error"); }
+      };
+      $("#matExportBtn").onclick = () => {
+        const data = materials.map(m => ({
+          title: m.title, html: m.html, level: m.level, importance: m.importance,
+          resources: m.resources || [], order: m.order || 0, status: m.status
+        }));
+        downloadFile(`materials-${chapterId}.json`, JSON.stringify({ materials: data }, null, 2), "application/json");
+      };
+    } else if (tab === "mcqs") {
+      box.innerHTML = `
+        <div class="row mb-16">
+          <button class="btn btn-primary" id="addQBtn">+ Add MCQ</button>
+          <span style="flex:1"></span>
+          <select id="qLevelFilter" style="min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+            <option value="">All levels (${questions.length})</option>
+            <option value="L1">L1 (${lc.L1})</option>
+            <option value="L2">L2 (${lc.L2})</option>
+            <option value="L3">L3 (${lc.L3})</option>
+          </select>
+          <input type="file" id="qImportFile" accept=".json" style="display:none">
+          <button class="btn" id="qImportBtn">📥 Import MCQ JSON</button>
+          <button class="btn" id="qExportBtn">📤 Export MCQ JSON</button>
+        </div>
+        <div id="qList"></div>
+      `;
+      const renderQList = (filterLevel = "") => {
+        const filtered = filterLevel ? questions.filter(q => q.level === filterLevel) : questions;
+        $("#qList").innerHTML = filtered.length === 0
+          ? emptyState("No questions", "Add your first MCQ.", "")
+          : `<div class="stack">${filtered.map(q => `<div class="card">
+              <div class="row-between">
+                <div style="flex:1">
+                  <strong>${escapeHtml((q.questionText || "").slice(0, 120))}${(q.questionText || "").length > 120 ? "…" : ""}</strong>
+                  <div class="list-item-meta mt-8">
+                    <span class="badge ${escapeHtml(q.level || "L1")}">${levelLabel(q.level)}</span>
+                    ${statusBadge(q.status)}
+                    <span>${(q.options || []).length} options</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <button class="btn btn-small" data-preview-q="${escapeHtml(q.id)}">Preview</button>
+                  <button class="btn btn-small" data-edit-q="${escapeHtml(q.id)}">Edit</button>
+                  <button class="btn btn-small btn-danger" data-del-q="${escapeHtml(q.id)}">Delete</button>
+                </div>
+              </div>
+            </div>`).join("")}</div>`;
+        $$("[data-edit-q]").forEach(b => b.addEventListener("click", () => openQuestionForm(chapterId, b.dataset.editQ, chapter.subjectId || "")));
+        $$("[data-preview-q]").forEach(b => b.addEventListener("click", () => previewQuestion(b.dataset.previewQ)));
+        $$("[data-del-q]").forEach(b => b.addEventListener("click", async () => {
+          if (!(await confirmDialog("Delete this MCQ?", { danger: true, confirmText: "Delete" }))) return;
+          try { await deleteDoc(doc(db, "questions", b.dataset.delQ)); toast("Deleted.", "success"); router(); }
+          catch (err) { toast(friendlyError(err, "deleting"), "error"); }
+        }));
+      };
+      renderQList();
+      $("#qLevelFilter").onchange = e => renderQList(e.target.value);
+      $("#addQBtn").onclick = () => openQuestionForm(chapterId, null, chapter.subjectId || "");
+      $("#qImportBtn").onclick = () => $("#qImportFile").click();
+      $("#qImportFile").onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const items = Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
+          if (!items.length) return toast("No questions found.", "error");
+          const errors = [];
+          items.forEach((q, i) => {
+            if (!q.questionText) errors.push(`Row ${i + 1}: missing questionText`);
+            if (!Array.isArray(q.options) || q.options.length < 2) errors.push(`Row ${i + 1}: needs ≥2 options`);
+            if (q.options && !q.options.some(o => o.id === q.correctOptionId)) errors.push(`Row ${i + 1}: correctOptionId invalid`);
+          });
+          const previewHtml = `<div class="card" style="box-shadow:none">
+            <h3>Preview: ${items.length} MCQ(s)</h3>
+            ${errors.length ? `<div class="reader-callout" style="border-color:var(--red);background:#fee2e2;color:#991b1b"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
+            <p class="small muted">They will be linked to chapter: <strong>${escapeHtml(chapter.title || "")}</strong></p>
+            <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="confirmQImport" ${errors.length ? "disabled" : ""}>Import ${items.length} MCQ(s)</button></div>
+          </div>`;
+          openModal(`<div class="modal-head"><h2>Import MCQs</h2><button class="modal-close" data-modal-close>✕</button></div>${previewHtml}`, true);
+          $("#confirmQImport")?.addEventListener("click", async () => {
+            const btn = $("#confirmQImport"); btn.disabled = true; btn.textContent = "Importing…";
+            try {
+              for (const q of items) {
+                const ref = q.id ? doc(db, "questions", q.id) : doc(collection(db, "questions"));
+                await setDoc(ref, {
+                  questionText: q.questionText, options: q.options,
+                  correctOptionId: q.correctOptionId, explanation: q.explanation || "",
+                  level: q.level || "L1", importance: q.importance || "normal",
+                  chapterId, subjectId: chapter.subjectId || "",
+                  order: Number(q.order || 0), status: q.status || "draft",
+                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+                }, { merge: true });
+              }
+              toast(`Imported ${items.length} MCQ(s).`, "success");
+              closeModal();
+              router();
+            } catch (err) { toast(friendlyError(err, "importing MCQs"), "error"); btn.disabled = false; btn.textContent = "Import"; }
+          });
+        } catch (err) { toast(`Invalid JSON: ${err.message}`, "error"); }
+      };
+      $("#qExportBtn").onclick = () => {
+        const data = questions.map(q => ({
+          questionText: q.questionText, options: q.options, correctOptionId: q.correctOptionId,
+          explanation: q.explanation || "", level: q.level, importance: q.importance || "normal",
+          order: q.order || 0, status: q.status
+        }));
+        downloadFile(`mcqs-${chapterId}.json`, JSON.stringify({ questions: data }, null, 2), "application/json");
+      };
+    }
+  };
+  $$(".tab").forEach(t => t.addEventListener("click", () => renderTab(t.dataset.tab)));
+  renderTab("materials");
+}
+
+/* ---- Admin: Material form ---- */
+function openMaterialForm(chapterId, id, subjectId) {
+  (async () => {
+    let ex = {};
+    if (id) { const s = await getDoc(doc(db, "materials", id)); if (s.exists()) ex = s.data(); }
+    S.editResources = Array.isArray(ex.resources) ? JSON.parse(JSON.stringify(ex.resources)) : [];
+    renderResourcesEditor();
+    openModal(`
+      <div class="modal-head"><h2>${id ? "Edit" : "New"} Material</h2><button class="modal-close" data-modal-close>✕</button></div>
+      <div class="form-grid">
+        <div><label>Title <span class="required">*</span></label><input id="matTitle" value="${escapeHtml(ex.title || "")}"></div>
+        <div><label>Level</label><select id="matLevel">
+          <option value="L1" ${ex.level === "L1" ? "selected" : ""}>L1 · Basic</option>
+          <option value="L2" ${ex.level === "L2" ? "selected" : ""}>L2 · Medium</option>
+          <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3 · Advanced</option>
+        </select></div>
+        <div><label>Importance</label><select id="matImp">
+          <option value="normal" ${ex.importance === "normal" ? "selected" : ""}>Normal</option>
+          <option value="important" ${ex.importance === "important" ? "selected" : ""}>Important</option>
+          <option value="veryImportant" ${ex.importance === "veryImportant" ? "selected" : ""}>Very important</option>
+        </select></div>
+        <div><label>HTML Content <span class="required">*</span></label>
+          <textarea id="matHtml" rows="12" placeholder="<h2>Heading</h2><p>Text</p><ul><li>Point</li></ul><table>...</table><mark>highlight</mark>">${escapeHtml(ex.html || ex.content || "")}</textarea>
+          <p class="tiny muted">Supports: h1-h6, p, strong, em, ul/ol/li, table, img, a, blockquote, mark, code</p>
+        </div>
+        <div><label>External Resources (YouTube / PDF / Website)</label>
+          <div id="resEditor"></div>
+          <button class="btn btn-small mt-8" id="addResBtn" type="button">+ Add Resource</button>
+        </div>
+        <div><label>Status</label><select id="matStatus">
+          <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${ex.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${ex.status === "archived" ? "selected" : ""}>Archived</option>
+        </select></div>
+      </div>
+      <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveMat">Save</button></div>
+    `, true);
+
+    function renderResourcesEditor() {
+      const box = $("#resEditor"); if (!box) return;
+      box.innerHTML = S.editResources.map((r, i) => `
+        <div class="editor-option">
+          <div class="mini-row"><input type="text" data-res-title="${i}" value="${escapeHtml(r.title || "")}" placeholder="Title" style="flex:1"></div>
+          <div class="mini-row mt-8">
+            <input type="url" data-res-url="${i}" value="${escapeHtml(r.url || "")}" placeholder="https://..." style="flex:1">
+            <select data-res-type="${i}">
+              <option value="youtube" ${r.type === "youtube" ? "selected" : ""}>YouTube</option>
+              <option value="pdf" ${r.type === "pdf" ? "selected" : ""}>PDF</option>
+              <option value="website" ${r.type === "website" ? "selected" : ""}>Website</option>
+            </select>
+            <button class="btn btn-small btn-danger" type="button" data-res-remove="${i}">✕</button>
+          </div>
+        </div>`).join("");
+      $$("[data-res-title]").forEach(inp => inp.addEventListener("input", () => { S.editResources[+inp.dataset.resTitle].title = inp.value; }));
+      $$("[data-res-url]").forEach(inp => inp.addEventListener("input", () => { S.editResources[+inp.dataset.resUrl].url = inp.value; }));
+      $$("[data-res-type]").forEach(s => s.addEventListener("change", () => { S.editResources[+s.dataset.resType].type = s.value; }));
+      $$("[data-res-remove]").forEach(b => b.addEventListener("click", () => { S.editResources.splice(+b.dataset.resRemove, 1); renderResourcesEditor(); }));
+    }
+    renderResourcesEditor();
+    $("#addResBtn").onclick = () => { S.editResources.push({ title: "", url: "", type: "youtube" }); renderResourcesEditor(); };
+
+    $("#saveMat").onclick = async () => {
+      const btn = $("#saveMat"); btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        const title = $("#matTitle").value.trim();
+        const html = $("#matHtml").value;
+        if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        if (!html.trim()) { toast("HTML content required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = {
+          title, html, level: $("#matLevel").value, importance: $("#matImp").value,
+          resources: S.editResources.filter(r => r.url && r.title),
+          chapterId, subjectId, order: 0, status: $("#matStatus").value,
+          updatedAt: serverTimestamp()
+        };
+        if (!id) data.createdAt = serverTimestamp();
+        const ref = id ? doc(db, "materials", id) : doc(collection(db, "materials"));
+        await setDoc(ref, data, { merge: true });
+        toast("Material saved.", "success");
+        closeModal();
+        router();
+      } catch (err) {
+        console.error("Save material error", err);
+        toast(friendlyError(err, "saving material"), "error", 5000);
+        btn.disabled = false; btn.textContent = "Save";
+      }
+    };
+  })();
+}
+
+async function previewMaterial(id) {
+  const s = await getDoc(doc(db, "materials", id));
+  if (!s.exists()) return toast("Not found.", "error");
+  const m = s.data();
+  openModal(`
+    <div class="modal-head"><h2>Preview: ${escapeHtml(m.title || "")}</h2><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="reader-content">${sanitizeHtml(m.html || m.content || "")}</div>
+  `, true);
+}
+
+/* ---- Admin: Question form ---- */
+function openQuestionForm(chapterId, id, subjectId) {
+  (async () => {
+    let ex = {};
+    if (id) { const s = await getDoc(doc(db, "questions", id)); if (s.exists()) ex = s.data(); }
+    S.editOptions = Array.isArray(ex.options) && ex.options.length ? JSON.parse(JSON.stringify(ex.options)) : [
+      { id: "a", text: "" }, { id: "b", text: "" }, { id: "c", text: "" }, { id: "d", text: "" }
+    ];
+    S.editCorrectId = ex.correctOptionId || "a";
+
+    openModal(`
+      <div class="modal-head"><h2>${id ? "Edit" : "New"} MCQ</h2><button class="modal-close" data-modal-close>✕</button></div>
+      <div class="form-grid">
+        <div><label>Question <span class="required">*</span></label><textarea id="qText" rows="3">${escapeHtml(ex.questionText || "")}</textarea></div>
+        <div><label>Level / Difficulty</label><select id="qLevel">
+          <option value="L1" ${ex.level === "L1" ? "selected" : ""}>L1 · Easy</option>
+          <option value="L2" ${ex.level === "L2" ? "selected" : ""}>L2 · Medium</option>
+          <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3 · Hard</option>
+        </select></div>
+        <div><label>Importance</label><select id="qImp">
+          <option value="normal" ${ex.importance === "normal" ? "selected" : ""}>Normal</option>
+          <option value="important" ${ex.importance === "important" ? "selected" : ""}>Important</option>
+          <option value="veryImportant" ${ex.importance === "veryImportant" ? "selected" : ""}>Very important</option>
+        </select></div>
+        <div><label>Options <span class="required">*</span></label>
+          <div id="optEditor"></div>
+          <button class="btn btn-small mt-8" id="addOptBtn" type="button">+ Add Option</button>
+        </div>
+        <div><label>Explanation</label><textarea id="qExpl" rows="3">${escapeHtml(ex.explanation || "")}</textarea></div>
+        <div><label>Status</label><select id="qStatus">
+          <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${ex.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${ex.status === "archived" ? "selected" : ""}>Archived</option>
+        </select></div>
+      </div>
+      <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveQ">Save</button></div>
+    `, true);
+
+    function renderOpts() {
+      const box = $("#optEditor"); if (!box) return;
+      box.innerHTML = S.editOptions.map((o, i) => `
+        <div class="editor-option">
+          <div class="mini-row">
+            <input type="text" data-opt-text="${i}" value="${escapeHtml(o.text || "")}" placeholder="Option ${String.fromCharCode(65 + i)}" style="flex:1">
+            <label class="small"><input type="radio" name="correctOpt" value="${escapeHtml(o.id)}" ${S.editCorrectId === o.id ? "checked" : ""}> Correct</label>
+            <button class="btn btn-small btn-danger" type="button" data-opt-remove="${i}" ${S.editOptions.length <= 2 ? "disabled" : ""}>✕</button>
+          </div>
+        </div>`).join("");
+      $$("[data-opt-text]").forEach(inp => inp.addEventListener("input", () => { S.editOptions[+inp.dataset.optText].text = inp.value; }));
+      $$('input[name="correctOpt"]').forEach(r => r.addEventListener("change", () => { S.editCorrectId = r.value; }));
+      $$("[data-opt-remove]").forEach(b => b.addEventListener("click", () => {
+        S.editOptions.splice(+b.dataset.optRemove, 1);
+        if (!S.editOptions.some(o => o.id === S.editCorrectId)) S.editCorrectId = S.editOptions[0]?.id || "a";
+        renderOpts();
+      }));
+    }
+    renderOpts();
+    $("#addOptBtn").onclick = () => {
+      if (S.editOptions.length >= 6) return toast("Max 6 options.", "error");
+      S.editOptions.push({ id: String.fromCharCode(97 + S.editOptions.length), text: "" });
+      renderOpts();
+    };
+
+    $("#saveQ").onclick = async () => {
+      const btn = $("#saveQ"); btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        const qText = $("#qText").value.trim();
+        if (!qText) { toast("Question required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const valid = S.editOptions.filter(o => o.text.trim());
+        if (valid.length < 2) { toast("Need ≥2 options with text.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        if (!valid.some(o => o.id === S.editCorrectId)) { toast("Mark the correct option.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = {
+          questionText: qText, options: valid, correctOptionId: S.editCorrectId,
+          explanation: $("#qExpl").value.trim(), level: $("#qLevel").value,
+          importance: $("#qImp").value, chapterId, subjectId, order: 0,
+          status: $("#qStatus").value, updatedAt: serverTimestamp()
+        };
+        if (!id) data.createdAt = serverTimestamp();
+        const ref = id ? doc(db, "questions", id) : doc(collection(db, "questions"));
+        await setDoc(ref, data, { merge: true });
+        toast("MCQ saved.", "success");
+        closeModal();
+        router();
+      } catch (err) {
+        console.error("Save MCQ error", err);
+        toast(friendlyError(err, "saving MCQ"), "error", 5000);
+        btn.disabled = false; btn.textContent = "Save";
+      }
+    };
+  })();
+}
+
+async function previewQuestion(id) {
+  const s = await getDoc(doc(db, "questions", id));
+  if (!s.exists()) return toast("Not found.", "error");
+  const q = s.data();
+  openModal(`
+    <div class="modal-head"><h2>Preview MCQ</h2><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="question-stem">${escapeHtml(q.questionText || "")}</div>
+    <div class="option-list">${(q.options || []).map((o, i) => {
+      const key = o.id || String.fromCharCode(97 + i);
+      const isCorrect = q.correctOptionId === key;
+      return `<div class="option-btn ${isCorrect ? "correct" : ""}" style="cursor:default">
+        <span class="option-key">${String.fromCharCode(65 + i)}</span>
+        <span>${escapeHtml(o.text || "")} ${isCorrect ? "<strong>(correct)</strong>" : ""}</span>
+      </div>`;
+    }).join("")}</div>
+    ${q.explanation ? `<div class="explanation-box"><h4>Explanation</h4><p>${sanitizeHtml(q.explanation)}</p></div>` : ""}
+  `, true);
+}
+
+/* ---- Admin: Import/Export full subject ---- */
+function renderAdminImport(token) {
+  setPage(`
+    <div class="page-head"><div><h1 class="page-title">JSON Import / Export</h1>
+    <p class="page-sub">Bulk load subjects with chapters, materials, and MCQs.</p></div>
+    <a class="btn" href="#/admin">← Back</a></div>
+
+    <div class="card mb-16">
+      <h2 class="card-title">Import full subject JSON</h2>
+      <p class="small muted">Structure: <code>{ "subject": {...}, "chapters": [{..., "materials": [...], "questions": [...]}] }</code></p>
+      <div class="form-grid">
+        <div><label>JSON file</label><input type="file" id="importFile" accept=".json"></div>
+        <div><label>Mode</label><select id="importMode">
+          <option value="addNew">Add New (skip if ID exists)</option>
+          <option value="addOrUpdate">Add or Update</option>
+          <option value="updateById">Update by ID only</option>
+        </select></div>
+      </div>
+      <div class="row mt-16">
+        <button class="btn btn-primary" id="previewImport">Validate &amp; Preview</button>
+        <button class="btn" id="downloadTemplate">Download Template</button>
+      </div>
+      <div id="previewBox" class="mt-16"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Export full subject</h2>
+      <div class="form-grid">
+        <div><label>Subject ID</label><input id="exportSubId" placeholder="Paste subject ID"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" id="exportBtn">Export JSON</button></div>
+    </div>
+  `);
+
+  $("#downloadTemplate").onclick = () => {
+    const tpl = {
+      subject: { title: "Example Subject", description: "Description", status: "draft", order: 0 },
+      chapters: [{
+        title: "Chapter 1", chapterNumber: 1, description: "Description", status: "draft",
+        materials: [{
+          title: "Introduction", level: "L1", importance: "important", status: "draft",
+          html: "<h2>Heading</h2><p>Paragraph with <strong>bold</strong> and <mark>highlighted</mark> text.</p><ul><li>Point 1</li><li>Point 2</li></ul>",
+          resources: [{ title: "Video", url: "https://www.youtube.com/watch?v=xxx", type: "youtube" }]
+        }],
+        questions: [{
+          questionText: "Sample question?",
+          options: [{ id: "a", text: "Option A" }, { id: "b", text: "Option B" }, { id: "c", text: "Option C" }, { id: "d", text: "Option D" }],
+          correctOptionId: "a", level: "L1", explanation: "Explanation", status: "draft"
+        }]
+      }]
+    };
+    downloadFile("sajilo-template.json", JSON.stringify(tpl, null, 2), "application/json");
+  };
+
+  $("#previewImport").onclick = async () => {
+    const file = $("#importFile").files[0];
+    if (!file) return toast("Choose a JSON file.", "error");
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const subjects = Array.isArray(parsed) ? parsed : (parsed.subject ? [parsed] : (parsed.subjects || []));
+      if (!subjects.length) return toast("No subjects found.", "error");
+
+      let totalChapters = 0, totalMaterials = 0, totalQuestions = 0;
+      const errors = [];
+      subjects.forEach((sb, si) => {
+        const sub = sb.subject || sb;
+        if (!sub.title) errors.push(`Subject ${si + 1}: missing title`);
+        (sb.chapters || []).forEach((ch, ci) => {
+          totalChapters++;
+          if (!ch.title) errors.push(`Subject ${si + 1}, Chapter ${ci + 1}: missing title`);
+          totalMaterials += (ch.materials || []).length;
+          (ch.questions || []).forEach((q, qi) => {
+            totalQuestions++;
+            if (!q.questionText) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: missing questionText`);
+            if (!Array.isArray(q.options) || q.options.length < 2) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: needs ≥2 options`);
+            if (q.options && !q.options.some(o => o.id === q.correctOptionId)) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: correctOptionId invalid`);
+          });
+        });
+      });
+
+      $("#previewBox").innerHTML = `<div class="card" style="box-shadow:none">
+        <div class="grid grid-4 mb-16">
+          <div class="stat-card"><div class="stat-value">${subjects.length}</div><div class="stat-label">Subjects</div></div>
+          <div class="stat-card"><div class="stat-value">${totalChapters}</div><div class="stat-label">Chapters</div></div>
+          <div class="stat-card"><div class="stat-value">${totalMaterials}</div><div class="stat-label">Materials</div></div>
+          <div class="stat-card"><div class="stat-value">${totalQuestions}</div><div class="stat-label">MCQs</div></div>
+        </div>
+        ${errors.length ? `<div style="padding:12px;background:#fee2e2;color:#991b1b;border-radius:12px"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 15).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
+        <div class="form-actions"><button class="btn btn-primary" id="confirmImport" ${errors.length ? "disabled" : ""}>Confirm Import</button></div>
+      </div>`;
+
+      $("#confirmImport")?.addEventListener("click", async () => {
+        const btn = $("#confirmImport"); btn.disabled = true; btn.textContent = "Importing…";
+        const mode = $("#importMode").value;
+        try {
+          let subCount = 0, chCount = 0, matCount = 0, qCount = 0, skipped = 0;
+          for (const sBlock of subjects) {
+            const subData = sBlock.subject || sBlock;
+            const subRef = subData.id ? doc(db, "subjects", subData.id) : doc(collection(db, "subjects"));
+            const existing = await getDoc(subRef);
+            if (existing.exists() && mode === "addNew") { skipped++; continue; }
+            await setDoc(subRef, {
+              title: subData.title || "Untitled", description: subData.description || "",
+              status: subData.status || "draft", order: Number(subData.order || 0),
+              createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+            }, { merge: true });
+            subCount++;
+            const subjectId = subRef.id;
+
+            for (const chData of (sBlock.chapters || [])) {
+              const chRef = chData.id ? doc(db, "chapters", chData.id) : doc(collection(db, "chapters"));
+              const chExisting = await getDoc(chRef);
+              if (chExisting.exists() && mode === "addNew") { skipped++; continue; }
+              await setDoc(chRef, {
+                title: chData.title || "Untitled", chapterNumber: Number(chData.chapterNumber || 1),
+                description: chData.description || "", subjectId, status: chData.status || "draft",
+                order: Number(chData.order || 0), createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+              }, { merge: true });
+              chCount++;
+              const chapterId = chRef.id;
+
+              for (const mData of (chData.materials || [])) {
+                const mRef = mData.id ? doc(db, "materials", mData.id) : doc(collection(db, "materials"));
+                await setDoc(mRef, {
+                  title: mData.title || "Untitled", html: mData.html || mData.content || "",
+                  level: mData.level || "L1", importance: mData.importance || "normal",
+                  resources: mData.resources || [], chapterId, subjectId,
+                  order: Number(mData.order || 0), status: mData.status || "draft",
+                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+                }, { merge: true });
+                matCount++;
+              }
+
+              for (const qData of (chData.questions || [])) {
+                const qRef = qData.id ? doc(db, "questions", qData.id) : doc(collection(db, "questions"));
+                await setDoc(qRef, {
+                  questionText: qData.questionText || "", options: qData.options || [],
+                  correctOptionId: qData.correctOptionId || "",
+                  explanation: qData.explanation || "", level: qData.level || "L1",
+                  importance: qData.importance || "normal", chapterId, subjectId,
+                  order: Number(qData.order || 0), status: qData.status || "draft",
+                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+                }, { merge: true });
+                qCount++;
+              }
+            }
+          }
+          toast(`Imported: ${subCount} subjects, ${chCount} chapters, ${matCount} materials, ${qCount} MCQs. Skipped: ${skipped}.`, "success", 6000);
+          $("#previewBox").innerHTML = `<div class="card" style="box-shadow:none"><p class="badge green">✓ Import complete</p></div>`;
+        } catch (err) {
+          console.error("Import error", err);
+          toast(friendlyError(err, "importing"), "error", 5000);
+          btn.disabled = false; btn.textContent = "Confirm Import";
+        }
+      });
+    } catch (err) {
+      toast(`Invalid JSON: ${err.message}`, "error");
+    }
+  };
+
+  $("#exportBtn").onclick = async () => {
+    const id = $("#exportSubId").value.trim();
+    if (!id) return toast("Enter subject ID.", "error");
+    try {
+      const subSnap = await getDoc(doc(db, "subjects", id));
+      if (!subSnap.exists()) return toast("Subject not found.", "error");
+      const subject = { id: subSnap.id, ...subSnap.data() };
+      const chSnap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",id), limit(500)));
+      const chapters = [];
+      for (const cd of chSnap.docs) {
+        const chapter = { id: cd.id, ...cd.data() };
+        const [mSnap, qSnap] = await Promise.all([
+          getDocs(query(collection(db, "materials"), where("chapterId","==",cd.id), limit(500))),
+          getDocs(query(collection(db, "questions"), where("chapterId","==",cd.id), limit(500)))
+        ]);
+        chapter.materials = mSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        chapter.questions = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        chapters.push(chapter);
+      }
+      downloadFile(`subject-${id}.json`, JSON.stringify({ subject, chapters }, null, 2), "application/json");
+      toast("Exported.", "success");
+    } catch (err) { toast(friendlyError(err, "exporting"), "error"); }
+  };
+}
+
+/* ============ BOOT ============ */
+function boot() {
+  cacheEls();
+  initTheme();
+  bindAuth();
+  bindShell();
+
+  if (firebaseInitError) {
+    if (els.bootScreen) els.bootScreen.innerHTML = `<div class="boot-logo">Sajilo<span>GK</span></div><p style="color:#fee2e2">Firebase initialization failed.</p><button class="btn" onclick="location.reload()">Reload</button>`;
+    return;
+  }
+
+  getRedirectResult(auth).catch(err => console.warn("Redirect result:", err));
+
+  onAuthStateChanged(auth, async user => {
+    S.user = user;
+    if (!user) {
+      S.profile = null; S.profileLoaded = false; S.profilePromise = null;
+      S.isOwner = false; S.isAdmin = false; S.selectedSubjects = []; S.exams = [];
+      showAuth(); setAuthTab("login");
+      return;
+    }
+    S.isOwner = user.email === OWNER_EMAIL && user.emailVerified === true;
+    S.isAdmin = S.isOwner;
+    showShell();
+    renderProfileChrome();
+    await ensureProfile();
+    await loadRole();
+    renderProfileChrome();
+    router();
+  });
+
+  window.addEventListener("online", () => toast("Back online.", "success"));
+  window.addEventListener("offline", () => toast("You are offline.", "info"));
+}
+
+document.addEventListener("DOMContentLoaded", boot);
+if (document.readyState !== "loading") boot();
