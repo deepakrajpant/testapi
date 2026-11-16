@@ -530,11 +530,9 @@ function bindVerifyGate() {
   $("#gateRefresh")?.addEventListener("click", refreshVerify);
 }
 
-/* ============ HOME (redesigned) ============ */
+/* ============ HOME ============ */
 async function renderHome(token) {
   setPage(spinner("Loading…"));
-
-  // Parallel fetches
   const [subjects, selected, todaySession, streak, recentMaterials, recentQuestions] = await Promise.all([
     loadAllSubjects(),
     loadSelectedSubjects(),
@@ -545,7 +543,6 @@ async function renderHome(token) {
   ]);
   if (isStale(token)) return;
 
-  // Compute per-subject progress (only for selected subjects, in parallel)
   const progressList = await Promise.all(selected.map(s => getSubjectProgress(s.id)));
   if (isStale(token)) return;
 
@@ -727,16 +724,14 @@ async function renderAllSubjects(token) {
   }));
 }
 
-/* ============ MY SUBJECTS (add + remove + click) ============ */
+/* ============ MY SUBJECTS ============ */
 async function renderMySubjects(token) {
   setPage(spinner("Loading…"));
   const [all, selected] = await Promise.all([loadAllSubjects(), loadSelectedSubjects()]);
   if (isStale(token)) return;
 
-  // Filter out deleted/archived subjects
   const selectedIds = new Set(selected.map(s => s.id));
   const validSubjects = all.filter(s => selectedIds.has(s.id));
-  // Auto-clean stale refs
   const stale = selected.filter(s => !all.find(a => a.id === s.id));
   if (stale.length) {
     for (const s of stale) { try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", s.id)); } catch {} }
@@ -824,7 +819,7 @@ function openManageSubjects(allSubjects, selectedIds) {
   render("yours");
 }
 
-/* ============ SUBJECT DETAIL (clickable chapter cards) ============ */
+/* ============ SUBJECT DETAIL ============ */
 async function renderSubjectDetail(id, token) {
   if (!id) return setPage(errorState("Not found", "No subject specified."));
   setPage(spinner("Loading subject…"));
@@ -856,15 +851,14 @@ async function renderSubjectDetail(id, token) {
   `);
 }
 
-/* ============ CHAPTER DETAIL (inline YouTube + PDFs) ============ */
+/* ============ CHAPTER DETAIL (inline YouTube + PDFs + bottom mark-as-read) ============ */
 function renderResource(r) {
   const url = safeUrl(r.url);
   if (!url) return "";
   const vid = youtubeId(url);
   if (vid) {
-    // Inline YouTube thumbnail with play button
     const title = r.title || "YouTube Video";
-    return `<div class="youtube-inline" data-vid="${escapeHtml(vid)}">
+    return `<div class="youtube-inline" data-vid="${escapeHtml(vid)}" data-title="${escapeHtml(title)}" role="button" tabindex="0">
       <img src="https://img.youtube.com/vi/${escapeHtml(vid)}/hqdefault.jpg" alt="${escapeHtml(title)}" loading="lazy">
       <div class="play-overlay">
         <div class="play-button">▶</div>
@@ -872,12 +866,21 @@ function renderResource(r) {
       </div>
     </div>`;
   }
-  // PDF / website: icon button
-  let icon = "🔗"; let label = r.title || "Link";
-  if (r.type === "pdf" || url.toLowerCase().endsWith(".pdf")) { icon = "📄"; if (!r.title) label = "PDF"; }
-  else if (r.type === "website") { icon = "🌐"; if (!r.title) label = "Website"; }
+  let icon = "🔗";
+  let typeLabel = "Link";
+  let displayLabel = r.title || "External Link";
+  const isPdf = r.type === "pdf" || /\.pdf(\?|#|$)/i.test(url);
+  if (isPdf) {
+    icon = "📄"; typeLabel = "PDF";
+    if (!r.title) displayLabel = "PDF Document";
+  } else if (r.type === "website") {
+    icon = "🌐"; typeLabel = "Website";
+    if (!r.title) displayLabel = "Website";
+  }
   return `<a class="resource-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-    <span class="icon">${icon}</span><span>${escapeHtml(label)}</span>
+    <span class="icon">${icon}</span>
+    <span>${escapeHtml(displayLabel)}</span>
+    <span class="resource-open-tag">Open ${typeLabel} →</span>
   </a>`;
 }
 
@@ -919,12 +922,14 @@ async function renderChapterDetail(id, token) {
                 ${m.importance && m.importance !== "normal" ? `<span class="badge ${escapeHtml(m.importance)}">${escapeHtml(m.importance)}</span>` : ""}
               </div>
             </div>
-            <button class="material-read-btn ${isRead ? "read" : ""}" data-mark-read="${escapeHtml(m.id)}" type="button">
-              ${isRead ? "✓ Read" : "Mark as read"}
-            </button>
           </div>
           <div class="reader-content">${html || '<p class="muted small">No content.</p>'}</div>
           ${resources.length ? `<div class="resource-icons">${resources.map(renderResource).join("")}</div>` : ""}
+          <div class="material-footer">
+            <button class="material-read-btn ${isRead ? "read" : ""}" data-mark-read="${escapeHtml(m.id)}" type="button">
+              ${isRead ? "✓ Marked as read" : "Mark as read"}
+            </button>
+          </div>
         </div>`;
       }).join("");
 
@@ -960,11 +965,33 @@ async function renderChapterDetail(id, token) {
     </div>
   `);
 
-  // YouTube inline play
-  $$(".youtube-inline").forEach(el => el.addEventListener("click", () => {
-    const vid = el.dataset.vid;
-    el.outerHTML = `<div class="video-embed"><iframe src="https://www.youtube.com/embed/${encodeURIComponent(vid)}?autoplay=1" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
-  }));
+  // YouTube inline play — robust click handler
+  $$(".youtube-inline").forEach(el => {
+    const activate = () => {
+      const vid = el.dataset.vid;
+      if (!vid) return;
+      const title = el.dataset.title || "YouTube video";
+      const wrapper = document.createElement("div");
+      const embedDiv = document.createElement("div");
+      embedDiv.className = "video-embed";
+      const iframe = document.createElement("iframe");
+      iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(vid)}?autoplay=1&rel=0&playsinline=1`;
+      iframe.title = title;
+      iframe.setAttribute("frameborder", "0");
+      iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+      iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      iframe.setAttribute("allowfullscreen", "");
+      embedDiv.appendChild(iframe);
+      const fallback = document.createElement("p");
+      fallback.style.cssText = "margin-top:8px;text-align:center";
+      fallback.innerHTML = `<a href="https://youtu.be/${encodeURIComponent(vid)}" target="_blank" rel="noopener noreferrer" class="small muted">Video not playing? Open on YouTube →</a>`;
+      wrapper.appendChild(embedDiv);
+      wrapper.appendChild(fallback);
+      el.replaceWith(wrapper);
+    };
+    el.addEventListener("click", e => { e.preventDefault(); activate(); });
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } });
+  });
 
   // Mark read
   $$("[data-mark-read]").forEach(btn => btn.addEventListener("click", async () => {
@@ -976,13 +1003,13 @@ async function renderChapterDetail(id, token) {
         status: "read", readAt: serverTimestamp(), updatedAt: serverTimestamp()
       }, { merge: true });
       await touchSession({ materialsRead: 1 });
-      btn.classList.add("read"); btn.textContent = "✓ Read";
+      btn.classList.add("read"); btn.textContent = "✓ Marked as read";
       toast("Marked as read.", "success");
     } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; }
   }));
 }
 
-/* ============ PRACTICE (instant submit, clickable) ============ */
+/* ============ PRACTICE ============ */
 async function renderPractice(params, token) {
   setPage(spinner("Loading…"));
   const chapterId = params.get("chapter");
@@ -1056,7 +1083,6 @@ function renderPracticeQuestion() {
   $$("[data-opt]").forEach(b => b.addEventListener("click", () => {
     const key = b.dataset.opt;
     p.answers.set(q.id, key);
-    // Fire-and-forget progress record (only once per question)
     if (!p.recorded.has(q.id)) {
       p.recorded.add(q.id);
       recordAttempt(q, key);
@@ -1096,7 +1122,7 @@ function submitPractice() {
   const p = S.practice;
   if (!p || p.submitted) return;
   p.submitted = true;
-  renderPracticeResults(); // Instant — no Firestore loops
+  renderPracticeResults();
 }
 
 function renderPracticeResults() {
@@ -1750,13 +1776,12 @@ function openQuestionForm(chapterId, id, subjectId) {
   })();
 }
 
-/* ============ ADMIN IMPORT/EXPORT with selection ============ */
+/* ============ ADMIN IMPORT/EXPORT ============ */
 async function renderAdminImport(token) {
   setPage(spinner("Loading…"));
   const allSubjects = await loadAllSubjects(true);
   if (isStale(token)) return;
 
-  // Load all chapters for all subjects in parallel (admin-only, OK)
   const chaptersBySubject = {};
   await Promise.all(allSubjects.map(async s => {
     try {
@@ -1842,7 +1867,6 @@ async function renderAdminImport(token) {
     </div>
   `);
 
-  // Subject checkbox toggles child chapters
   $$(".sub-check").forEach(cb => cb.addEventListener("change", () => {
     const sid = cb.dataset.sid;
     $$(`.ch-check[data-sid="${sid}"]`).forEach(ch => ch.checked = cb.checked);
