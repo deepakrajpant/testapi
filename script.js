@@ -856,6 +856,8 @@ function renderResource(r) {
   const url = safeUrl(r.url);
   if (!url) return "";
   const vid = youtubeId(url);
+
+  // YouTube → inline thumbnail with play button
   if (vid) {
     const title = r.title || "YouTube Video";
     return `<div class="youtube-inline" data-vid="${escapeHtml(vid)}" data-title="${escapeHtml(title)}" role="button" tabindex="0">
@@ -866,21 +868,23 @@ function renderResource(r) {
       </div>
     </div>`;
   }
+
+  // Non-YouTube (PDF / Website / Other) → "Read More" button
   let icon = "🔗";
-  let typeLabel = "Link";
   let displayLabel = r.title || "External Link";
   const isPdf = r.type === "pdf" || /\.pdf(\?|#|$)/i.test(url);
   if (isPdf) {
-    icon = "📄"; typeLabel = "PDF";
+    icon = "📄";
     if (!r.title) displayLabel = "PDF Document";
   } else if (r.type === "website") {
-    icon = "🌐"; typeLabel = "Website";
+    icon = "🌐";
     if (!r.title) displayLabel = "Website";
   }
-  return `<a class="resource-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-    <span class="icon">${icon}</span>
-    <span>${escapeHtml(displayLabel)}</span>
-    <span class="resource-open-tag">Open ${typeLabel} →</span>
+
+  return `<a class="resource-read-more" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+    <span class="resource-read-icon">${icon}</span>
+    <span class="resource-read-title">${escapeHtml(displayLabel)}</span>
+    <span class="resource-read-btn">Read More →</span>
   </a>`;
 }
 
