@@ -9,7 +9,7 @@ import {
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, deleteDoc, query, where, orderBy, limit,
-  serverTimestamp, writeBatch, Timestamp
+  serverTimestamp, writeBatch, Timestamp, getCountFromServer
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
 /* ============ FIREBASE ============ */
@@ -22,20 +22,27 @@ const firebaseConfig = {
   appId: "1:484441818228:web:fb43d456131cd40ec1fd21",
   measurementId: "G-D5RTD5R7B4"
 };
-
 let app, auth, db, firebaseInitError = null;
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
-  try {
-    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) });
-  } catch {
-    db = getFirestore(app);
-  }
-} catch (err) {
-  firebaseInitError = err;
-  console.error("Firebase init failed", err);
-}
+  try { db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) }); }
+  catch { db = getFirestore(app); }
+} catch (err) { firebaseInitError = err; console.error("Firebase init failed", err); }
+
+/* ============ IN-MEMORY CACHE ============ */
+const MEM = {
+  data: new Map(),
+  get(key, ttl = 120000) {
+    const e = this.data.get(key);
+    if (!e) return null;
+    if (Date.now() - e.t > ttl) { this.data.delete(key); return null; }
+    return e.v;
+  },
+  set(key, v) { this.data.set(key, { v, t: Date.now() }); },
+  del(key) { this.data.delete(key); },
+  clear() { this.data.clear(); }
+};
 
 /* ============ STATE ============ */
 const OWNER_EMAIL = "deepakrajpant978@gmail.com";
@@ -48,7 +55,6 @@ const S = {
   practice: null
 };
 const els = {};
-
 function cacheEls() {
   ["bootScreen","authView","appShell","app","menuToggle","adminHeaderBtn","themeToggle",
    "profileBtn","profileDropdown","avatarInitial","profileChipName","logoutBtn","mobileLogoutBtn",
@@ -98,8 +104,8 @@ function sanitizeHtml(html) {
   walk(tpl.content);
   return tpl.innerHTML;
 }
-function nepalDateKey() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: NEPAL_TZ, year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+function nepalDateKey(d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: NEPAL_TZ, year:"numeric", month:"2-digit", day:"2-digit" }).format(d);
 }
 function toDate(v) {
   if (!v) return null;
@@ -110,13 +116,11 @@ function toDate(v) {
   return null;
 }
 function formatDate(v) {
-  const d = toDate(v);
-  if (!d) return "—";
+  const d = toDate(v); if (!d) return "—";
   return new Intl.DateTimeFormat("en-GB", { timeZone: NEPAL_TZ, year:"numeric", month:"short", day:"numeric" }).format(d);
 }
 function timeAgo(v) {
-  const d = toDate(v);
-  if (!d) return "—";
+  const d = toDate(v); if (!d) return "—";
   const diff = Date.now() - d.getTime();
   const min = Math.floor(diff / 60000);
   if (min < 1) return "just now";
@@ -147,13 +151,12 @@ function errorState(t, txt) {
 function friendlyError(err, ctx = "") {
   console.error(`[SajiloGK:${ctx}]`, err);
   const c = err?.code || "";
-  if (c === "permission-denied") return "Access denied. Verify your email or check that content is published.";
-  if (c === "unavailable") return "Network or Firebase unavailable.";
-  if (c === "failed-precondition") return "Firestore index missing. See setup docs.";
+  if (c === "permission-denied") return "Access denied.";
+  if (c === "unavailable") return "Network unavailable.";
+  if (c === "failed-precondition") return "Firestore index missing.";
   if (c === "auth/invalid-credential" || c === "auth/wrong-password" || c === "auth/user-not-found") return "Email or password incorrect.";
   if (c === "auth/email-already-in-use") return "Email already in use.";
-  if (c === "auth/too-many-requests") return "Too many attempts. Wait a moment.";
-  return ctx ? `Failed while ${ctx}. Retry.` : "Something went wrong.";
+  return ctx ? `Failed while ${ctx}.` : "Something went wrong.";
 }
 function confirmDialog(msg, { title = "Confirm", confirmText = "Confirm", danger = false } = {}) {
   return new Promise(resolve => {
@@ -233,8 +236,7 @@ function setAuthTab(tab) {
   authMsg("");
 }
 function renderProfileChrome() {
-  const u = S.user;
-  if (!u) return;
+  const u = S.user; if (!u) return;
   const name = S.profile?.displayName || u.displayName || u.email?.split("@")[0] || "Student";
   const initial = (name.trim().charAt(0) || "S").toUpperCase();
   if (els.profileChipName) els.profileChipName.textContent = name;
@@ -257,9 +259,8 @@ async function ensureProfile(force = false) {
       if (!db || !S.user) return null;
       const ref = doc(db, "users", S.user.uid);
       const snap = await getDoc(ref);
-      if (snap.exists()) {
-        S.profile = { id: snap.id, ...snap.data() };
-      } else if (S.user.emailVerified) {
+      if (snap.exists()) S.profile = { id: snap.id, ...snap.data() };
+      else if (S.user.emailVerified) {
         const data = {
           uid: S.user.uid, email: S.user.email || "",
           displayName: S.user.displayName || S.user.email?.split("@")[0] || "Student",
@@ -270,10 +271,8 @@ async function ensureProfile(force = false) {
         S.profile = { id: S.user.uid, ...data };
       }
       return S.profile;
-    } catch (err) {
-      console.warn("Profile load failed", err);
-      return null;
-    } finally { S.profileLoaded = true; }
+    } catch (err) { console.warn("Profile load failed", err); return null; }
+    finally { S.profileLoaded = true; }
   })();
   return S.profilePromise;
 }
@@ -283,16 +282,14 @@ async function loadRole() {
   if (!S.isOwner && S.user) {
     try {
       const snap = await getDoc(doc(db, "adminRoles", S.user.uid));
-      if (snap.exists()) {
-        const d = snap.data();
-        S.isAdmin = d.active === true && ["admin","editor"].includes(d.role);
-      }
+      if (snap.exists()) { const d = snap.data(); S.isAdmin = d.active === true && ["admin","editor"].includes(d.role); }
     } catch {}
   }
   if (els.adminHeaderBtn) els.adminHeaderBtn.classList.toggle("hidden", !(S.isOwner || S.isAdmin));
 }
 async function doLogout() {
   cleanup();
+  MEM.clear();
   try { await signOut(auth); } catch (err) { console.warn(err); }
   S.user = null; S.profile = null; S.profileLoaded = false; S.profilePromise = null;
   S.isOwner = false; S.isAdmin = false; S.selectedSubjects = []; S.exams = [];
@@ -310,41 +307,29 @@ async function refreshVerify() {
   try {
     await reload(S.user);
     S.user = auth.currentUser;
-    if (S.user?.emailVerified) {
-      await ensureProfile(true);
-      await loadRole();
-      renderProfileChrome();
-      toast("Email verified.", "success");
-      router();
-    } else {
-      toast("Still not verified.", "error");
-    }
+    if (S.user?.emailVerified) { await ensureProfile(true); await loadRole(); renderProfileChrome(); toast("Email verified.", "success"); router(); }
+    else toast("Still not verified.", "error");
   } catch (err) { toast(friendlyError(err, "refreshing"), "error"); }
 }
 async function googleSignIn() {
   authMsg("");
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (err) {
+  try { await signInWithPopup(auth, provider); }
+  catch (err) {
     const code = err?.code || "";
     if (["auth/popup-blocked","auth/operation-not-supported-in-this-environment","auth/cancelled-popup-request"].includes(code)) {
       authMsg("Popup blocked. Redirecting to Google…", "info");
       try { await signInWithRedirect(auth, provider); }
       catch (re) { authMsg(friendlyError(re, "Google redirect"), "error"); }
-    } else if (code === "auth/popup-closed-by-user") {
-      authMsg("Sign-in cancelled.", "info");
-    } else {
-      authMsg(friendlyError(err, "Google sign-in"), "error");
-    }
+    } else if (code === "auth/popup-closed-by-user") authMsg("Sign-in cancelled.", "info");
+    else authMsg(friendlyError(err, "Google sign-in"), "error");
   }
 }
 function bindAuth() {
   $$(".auth-tab").forEach(b => b.addEventListener("click", () => setAuthTab(b.dataset.authTab)));
   els.loginForm?.addEventListener("submit", async e => {
-    e.preventDefault();
-    authMsg("");
+    e.preventDefault(); authMsg("");
     const email = $("#loginEmail").value.trim();
     const pw = $("#loginPassword").value;
     if (!email || !pw) return authMsg("Enter email and password.");
@@ -355,8 +340,7 @@ function bindAuth() {
     finally { btn.disabled = false; btn.textContent = "Login"; }
   });
   els.signupForm?.addEventListener("submit", async e => {
-    e.preventDefault();
-    authMsg("");
+    e.preventDefault(); authMsg("");
     const name = $("#signupName").value.trim();
     const email = $("#signupEmail").value.trim();
     const pw = $("#signupPassword").value;
@@ -373,8 +357,7 @@ function bindAuth() {
     finally { btn.disabled = false; btn.textContent = "Create account"; }
   });
   els.resetForm?.addEventListener("submit", async e => {
-    e.preventDefault();
-    authMsg("");
+    e.preventDefault(); authMsg("");
     const email = $("#resetEmail").value.trim();
     if (!email) return authMsg("Enter email.");
     try { await sendPasswordResetEmail(auth, email); authMsg("Reset email sent.", "success"); }
@@ -429,6 +412,67 @@ function bindShell() {
   window.addEventListener("hashchange", router);
 }
 
+/* ============ DATA LAYER (cached) ============ */
+async function loadAllSubjects(force = false) {
+  if (!force) { const c = MEM.get("subjects"); if (c) return c; }
+  try {
+    const snap = await getDocs(query(collection(db, "subjects"), where("status","==","published"), limit(300)));
+    const subjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    MEM.set("subjects", subjects);
+    return subjects;
+  } catch (err) { console.warn("Subjects load error", err); return []; }
+}
+async function loadSelectedSubjects(force = false) {
+  if (!force) { const c = MEM.get("selectedSubjects"); if (c) { S.selectedSubjects = c; return c; } }
+  try {
+    const snap = await getDocs(collection(db, "users", S.user.uid, "selectedSubjects"));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.selectedSubjects = list;
+    MEM.set("selectedSubjects", list);
+    return list;
+  } catch { S.selectedSubjects = []; return []; }
+}
+async function loadExams(force = false) {
+  if (!force) { const c = MEM.get("exams"); if (c) return c; }
+  try {
+    const snap = await getDocs(query(collection(db, "exams"), where("status","==","published"), limit(50)));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.exams = list;
+    MEM.set("exams", list);
+    return list;
+  } catch { S.exams = []; return []; }
+}
+async function loadChapters(subjectId, force = false) {
+  const key = `chapters:${subjectId}`;
+  if (!force) { const c = MEM.get(key); if (c) return c; }
+  try {
+    const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",subjectId), where("status","==","published"), limit(200)));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+    MEM.set(key, list);
+    return list;
+  } catch { return []; }
+}
+async function loadMaterials(chapterId, force = false) {
+  const key = `materials:${chapterId}`;
+  if (!force) { const c = MEM.get(key); if (c) return c; }
+  try {
+    const snap = await getDocs(query(collection(db, "materials"), where("chapterId","==",chapterId), where("status","==","published"), limit(100)));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+    MEM.set(key, list);
+    return list;
+  } catch { return []; }
+}
+async function loadQuestions(chapterId, force = false) {
+  const key = `questions:${chapterId}`;
+  if (!force) { const c = MEM.get(key); if (c) return c; }
+  try {
+    const snap = await getDocs(query(collection(db, "questions"), where("chapterId","==",chapterId), where("status","==","published"), limit(500)));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    MEM.set(key, list);
+    return list;
+  } catch { return []; }
+}
+
 /* ============ ROUTER ============ */
 async function router() {
   const token = newToken();
@@ -442,9 +486,7 @@ async function router() {
   renderProfileChrome();
 
   if (!S.user.emailVerified && !["profile","settings","verify","admin"].includes(name)) {
-    setPage(verifyGate());
-    bindVerifyGate();
-    return;
+    setPage(verifyGate()); bindVerifyGate(); return;
   }
 
   try {
@@ -454,7 +496,6 @@ async function router() {
       case "my-subjects": await renderMySubjects(token); break;
       case "subject": await renderSubjectDetail(segs[1], token); break;
       case "chapter": await renderChapterDetail(segs[1], token); break;
-      case "material": await renderMaterial(segs[1], token); break;
       case "practice": await renderPractice(params, token); break;
       case "progress": await renderProgress(token); break;
       case "saved": await renderSaved(token); break;
@@ -489,202 +530,301 @@ function bindVerifyGate() {
   $("#gateRefresh")?.addEventListener("click", refreshVerify);
 }
 
-/* ============ HOME ============ */
+/* ============ HOME (redesigned) ============ */
 async function renderHome(token) {
   setPage(spinner("Loading…"));
-  await Promise.all([loadSelectedSubjects(), loadExams()]);
+
+  // Parallel fetches
+  const [subjects, selected, todaySession, streak, recentMaterials, recentQuestions] = await Promise.all([
+    loadAllSubjects(),
+    loadSelectedSubjects(),
+    getTodaySession(),
+    getStreak(),
+    getRecentMaterials(),
+    getRecentQuestions()
+  ]);
   if (isStale(token)) return;
 
-  const myExamIds = S.profile?.examIds || [];
-  const myExams = S.exams.filter(e => myExamIds.includes(e.id));
-  const today = await getTodaySession();
+  // Compute per-subject progress (only for selected subjects, in parallel)
+  const progressList = await Promise.all(selected.map(s => getSubjectProgress(s.id)));
+  if (isStale(token)) return;
+
+  const name = (S.profile?.displayName || S.user.displayName || "Student").split(" ")[0];
+  const todayDone = (todaySession?.materialsRead || 0) + (todaySession?.questionsAttempted || 0);
+  const goal = Number(S.profile?.dailyGoal || 20);
+  const goalPct = Math.min(100, Math.round((todayDone / Math.max(1, goal)) * 100));
+
+  const continueItem = recentMaterials[0];
+  const subjectProgressMap = new Map(selected.map((s, i) => [s.id, progressList[i]]));
 
   setPage(`
-    <div class="page-head"><div><h1 class="page-title">Namaste, ${escapeHtml((S.profile?.displayName || S.user.displayName || "Student").split(" ")[0])} 👋</h1>
-    <p class="page-sub">${today ? `Today: ${today.questionsAttempted || 0} attempted, ${today.materialsRead || 0} read` : "Start your study today."}</p></div>
-    <a class="btn btn-primary" href="#/all-subjects">Browse subjects</a></div>
+    <div class="home-hero">
+      <div>
+        <h1>Namaste, ${escapeHtml(name)} 👋</h1>
+        <p>${continueItem ? `Continue where you left off.` : `Ready to start studying?`} Today: ${todayDone} of ${goal} goal.</p>
+      </div>
+      <div class="home-streak">
+        <div class="home-streak-value">${streak}</div>
+        <div class="home-streak-label">Day streak 🔥</div>
+      </div>
+    </div>
 
-    <div class="grid grid-2 mb-16">
-      <div class="card">
-        <h2 class="card-title">Quick actions</h2>
-        <div class="row">
-          <a class="btn" href="#/all-subjects">🌐 All Subjects</a>
-          <a class="btn" href="#/my-subjects">📚 My Subjects</a>
-          <a class="btn" href="#/progress">📈 Progress</a>
+    ${continueItem ? `
+      <a class="continue-card" href="#/chapter/${encodeURIComponent(continueItem.chapterId || "")}">
+        <div class="continue-icon">▶️</div>
+        <div class="continue-body">
+          <strong>Continue learning</strong>
+          <span class="small">${escapeHtml(continueItem.title || "Material")} · ${continueItem.status === "read" ? "Read" : "Opened"} ${timeAgo(continueItem.updatedAt)}</span>
         </div>
-      </div>
-      <div class="card">
-        <h2 class="card-title">My target exams</h2>
-        ${myExams.length
-          ? `<div class="chip-list">${myExams.map(e => `<span class="chip">${escapeHtml(e.title || e.code || "Exam")}</span>`).join("")}</div>`
-          : `<p class="small muted mb-0">No exams yet. Add subjects from All Subjects.</p>`}
-      </div>
+        <span class="continue-arrow">→</span>
+      </a>
+    ` : ""}
+
+    <div class="section-head"><h2>Quick actions</h2></div>
+    <div class="quick-tiles">
+      <a class="quick-tile" href="#/all-subjects">
+        <span class="quick-tile-icon">🌐</span>
+        <span class="quick-tile-label">All Subjects</span>
+      </a>
+      <a class="quick-tile" href="#/my-subjects">
+        <span class="quick-tile-icon">📚</span>
+        <span class="quick-tile-label">My Subjects</span>
+      </a>
+      <a class="quick-tile" href="#/progress">
+        <span class="quick-tile-icon">📈</span>
+        <span class="quick-tile-label">Progress</span>
+      </a>
     </div>
 
-    <div class="card">
-      <div class="row-between mb-8"><h2 class="card-title mb-0">My selected subjects</h2><a class="btn btn-small" href="#/my-subjects">Manage</a></div>
-      ${S.selectedSubjects.length
-        ? `<div class="grid grid-2">${S.selectedSubjects.slice(0, 4).map(s => `<a class="card clickable" style="box-shadow:none" href="#/subject/${encodeURIComponent(s.id)}">
-            <strong>${escapeHtml(s.title || "Subject")}</strong>
-            <p class="small muted mb-0 mt-8">Open to see chapters →</p>
-          </a>`).join("")}</div>`
-        : `<p class="small muted">No subjects selected. <a href="#/all-subjects">Browse all subjects →</a></p>`}
-    </div>
+    ${selected.length > 0 ? `
+      <div class="section-head"><h2>My subjects</h2><a href="#/my-subjects">Manage →</a></div>
+      <div class="grid grid-2">
+        ${selected.slice(0, 4).map(s => {
+          const p = subjectProgressMap.get(s.id) || {};
+          const pct = p.totalMaterials ? Math.round((p.readMaterials / p.totalMaterials) * 100) : 0;
+          return `<a class="subject-prog" href="#/subject/${encodeURIComponent(s.id)}">
+            <div class="row-between">
+              <p class="subject-prog-title">${escapeHtml(s.title || "Subject")}</p>
+              <span class="badge">${pct}%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+            <p class="tiny muted mb-0">${p.readMaterials || 0}/${p.totalMaterials || 0} read · ${p.answered || 0}/${p.totalQuestions || 0} MCQs</p>
+          </a>`;
+        }).join("")}
+      </div>
+    ` : `
+      <div class="card">
+        <h2 class="card-title">Get started</h2>
+        <p class="small muted">Add subjects to start your preparation.</p>
+        <a class="btn btn-primary" href="#/all-subjects">Browse subjects</a>
+      </div>
+    `}
+
+    ${recentQuestions.length > 0 ? `
+      <div class="section-head"><h2>Recent activity</h2></div>
+      <div class="card">
+        ${recentQuestions.slice(0, 3).map(q => `<div class="list-item">
+          <div class="list-item-main">
+            <p class="list-item-title">${escapeHtml((q.title || "Question").slice(0, 80))}</p>
+            <div class="list-item-meta">
+              <span class="badge ${q.level || "L1"}">${levelLabel(q.level)}</span>
+              <span>${q.attempts || 0} attempt${(q.attempts || 0) === 1 ? "" : "s"}</span>
+              <span>${timeAgo(q.updatedAt)}</span>
+            </div>
+          </div>
+        </div>`).join("")}
+      </div>
+    ` : ""}
   `);
 }
 
-/* ============ ALL SUBJECTS (student browse) ============ */
-async function loadAllSubjects() {
+async function getTodaySession() {
+  if (!S.user) return null;
+  const key = nepalDateKey();
+  try { const s = await getDoc(doc(db, "users", S.user.uid, "studySessions", key)); return s.exists() ? s.data() : null; }
+  catch { return null; }
+}
+async function getStreak() {
   try {
-    const snap = await getDocs(query(collection(db, "subjects"), where("status","==","published"), limit(300)));
+    const snap = await getDocs(query(collection(db, "users", S.user.uid, "studySessions"), orderBy("dateKey","desc"), limit(60)));
+    const keys = new Set(snap.docs.map(d => d.data().dateKey).filter(Boolean));
+    let streak = 0;
+    const today = new Date();
+    for (let i = 0; i < 60; i++) {
+      const key = nepalDateKey(today);
+      if (keys.has(key)) { streak++; today.setDate(today.getDate() - 1); }
+      else if (i === 0) today.setDate(today.getDate() - 1);
+      else break;
+    }
+    return streak;
+  } catch { return 0; }
+}
+async function getRecentMaterials() {
+  try {
+    const snap = await getDocs(query(collection(db, "users", S.user.uid, "materialProgress"), orderBy("updatedAt","desc"), limit(3)));
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch (err) {
-    console.warn("All subjects load error", err);
-    return [];
-  }
+  } catch { return []; }
 }
-async function loadSelectedSubjects() {
+async function getRecentQuestions() {
   try {
-    const snap = await getDocs(collection(db, "users", S.user.uid, "selectedSubjects"));
-    S.selectedSubjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch { S.selectedSubjects = []; }
-  return S.selectedSubjects;
+    const snap = await getDocs(query(collection(db, "users", S.user.uid, "questionProgress"), orderBy("updatedAt","desc"), limit(5)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { return []; }
 }
-async function loadExams() {
+async function getSubjectProgress(subjectId) {
   try {
-    const snap = await getDocs(query(collection(db, "exams"), where("status","==","published"), limit(50)));
-    S.exams = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch { S.exams = []; }
-  return S.exams;
+    const [totalMaterials, readMaterials, totalQuestions, answered] = await Promise.all([
+      getCountFromServer(query(collection(db, "materials"), where("subjectId","==",subjectId), where("status","==","published"))).then(r => r.data().count).catch(() => 0),
+      getCountFromServer(query(collection(db, "users", S.user.uid, "materialProgress"), where("subjectId","==",subjectId), where("status","==","read"))).then(r => r.data().count).catch(() => 0),
+      getCountFromServer(query(collection(db, "questions"), where("subjectId","==",subjectId), where("status","==","published"))).then(r => r.data().count).catch(() => 0),
+      getCountFromServer(query(collection(db, "users", S.user.uid, "questionProgress"), where("subjectId","==",subjectId))).then(r => r.data().count).catch(() => 0)
+    ]);
+    return { totalMaterials, readMaterials, totalQuestions, answered };
+  } catch { return { totalMaterials: 0, readMaterials: 0, totalQuestions: 0, answered: 0 }; }
 }
+
+/* ============ ALL SUBJECTS ============ */
 async function renderAllSubjects(token) {
-  setPage(spinner("Loading subjects…"));
+  setPage(spinner("Loading…"));
   const [all, selected] = await Promise.all([loadAllSubjects(), loadSelectedSubjects()]);
   if (isStale(token)) return;
   const selectedIds = new Set(selected.map(s => s.id));
 
   setPage(`
     <div class="page-head"><div><h1 class="page-title">All Subjects</h1>
-    <p class="page-sub">Browse all published subjects. Add any to your personal list.</p></div></div>
+    <p class="page-sub">Browse and add to your study list.</p></div></div>
     ${all.length === 0
-      ? emptyState("No subjects yet", "The administrator hasn't published any subjects. Check back soon.", `<a class="btn" href="#/home">Home</a>`)
+      ? emptyState("No subjects yet", "Administrator hasn't published any subjects.")
       : `<div class="grid grid-2">${all.map(s => {
           const isMine = selectedIds.has(s.id);
           return `<div class="card">
             <div class="row-between"><strong>${escapeHtml(s.title || s.code || "Subject")}</strong>
-            ${isMine ? '<span class="badge green">In My Subjects</span>' : '<span class="badge">Not selected</span>'}</div>
-            <p class="small muted mt-8">${escapeHtml(s.description || "No description.")}</p>
+            ${isMine ? '<span class="badge green">In My Subjects</span>' : ''}</div>
+            <p class="small muted mt-8">${escapeHtml(s.description || "")}</p>
             <div class="row mt-8">
               <a class="btn btn-small" href="#/subject/${encodeURIComponent(s.id)}">View</a>
-              <button class="btn btn-small ${isMine ? "btn-ghost" : "btn-primary"}" data-add-subject="${escapeHtml(s.id)}" data-add-title="${escapeHtml(s.title || "")}" data-added="${isMine ? "1" : "0"}">
-                ${isMine ? "Remove" : "+ Add to My Subjects"}
+              <button class="btn btn-small ${isMine ? "btn-ghost" : "btn-primary"}" data-add="${escapeHtml(s.id)}" data-title="${escapeHtml(s.title || "")}" data-added="${isMine ? "1" : "0"}">
+                ${isMine ? "Remove" : "+ Add"}
               </button>
             </div>
           </div>`;
         }).join("")}</div>`}
   `);
 
-  $$("[data-add-subject]").forEach(b => b.addEventListener("click", async () => {
+  $$("[data-add]").forEach(b => b.addEventListener("click", async () => {
     b.disabled = true;
-    const sid = b.dataset.addSubject;
+    const sid = b.dataset.add;
     const added = b.dataset.added === "1";
     try {
-      if (added) {
-        await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid));
-        toast("Removed from My Subjects.", "success");
-      } else {
-        await setDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid), {
-          subjectId: sid,
-          title: b.dataset.addTitle || "",
-          addedAt: serverTimestamp()
-        });
-        toast("Added to My Subjects.", "success");
-      }
+      if (added) await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid));
+      else await setDoc(doc(db, "users", S.user.uid, "selectedSubjects", sid), {
+        subjectId: sid, title: b.dataset.title || "", addedAt: serverTimestamp()
+      });
+      MEM.del("selectedSubjects");
+      toast(added ? "Removed." : "Added.", "success");
       router();
-    } catch (err) {
-      console.error("Save subject error", err);
-      toast(friendlyError(err, "saving subject"), "error", 5000);
-      b.disabled = false;
-    }
+    } catch (err) { toast(friendlyError(err, "saving"), "error"); b.disabled = false; }
   }));
 }
 
-/* ============ MY SUBJECTS (fix #1 & #5) ============ */
+/* ============ MY SUBJECTS (add + remove + click) ============ */
 async function renderMySubjects(token) {
   setPage(spinner("Loading…"));
-  await loadSelectedSubjects();
-
-  // FIX #5: Filter out subjects that no longer exist or are archived
-  const validSubjects = [];
-  for (const sel of S.selectedSubjects) {
-    try {
-      const snap = await getDoc(doc(db, "subjects", sel.id));
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.status !== "archived") {
-          validSubjects.push({ id: snap.id, title: d.title, description: d.description, status: d.status });
-        } else {
-          try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sel.id)); } catch {}
-        }
-      } else {
-        // Admin deleted it — clean up
-        try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", sel.id)); } catch {}
-      }
-    } catch (err) { console.warn("Verify subject failed", err); }
-  }
-
+  const [all, selected] = await Promise.all([loadAllSubjects(), loadSelectedSubjects()]);
   if (isStale(token)) return;
+
+  // Filter out deleted/archived subjects
+  const selectedIds = new Set(selected.map(s => s.id));
+  const validSubjects = all.filter(s => selectedIds.has(s.id));
+  // Auto-clean stale refs
+  const stale = selected.filter(s => !all.find(a => a.id === s.id));
+  if (stale.length) {
+    for (const s of stale) { try { await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", s.id)); } catch {} }
+    MEM.del("selectedSubjects");
+  }
 
   setPage(`
     <div class="page-head">
       <div><h1 class="page-title">My Subjects</h1><p class="page-sub">Tap a card to open</p></div>
-      <button class="btn btn-primary" id="manageSubjectsBtn">⚙ Manage Subjects</button>
+      <button class="btn btn-primary" id="manageBtn">⚙ Manage Subjects</button>
     </div>
     ${validSubjects.length === 0
-      ? emptyState("No subjects yet", "Add subjects from All Subjects page.", `<a class="btn btn-primary" href="#/all-subjects">Browse all subjects</a>`)
+      ? emptyState("No subjects yet", "Add subjects from All Subjects or use Manage Subjects.", `<button class="btn btn-primary" id="emptyManage">+ Add subjects</button>`)
       : `<div class="grid grid-2">${validSubjects.map(s => `
         <a class="card clickable" href="#/subject/${encodeURIComponent(s.id)}">
-          <div class="row-between">
-            <strong style="font-size:1.02rem">${escapeHtml(s.title || "Subject")}</strong>
-            ${s.status === "published" ? '<span class="badge green">Active</span>' : '<span class="badge">Draft</span>'}
-          </div>
-          <p class="small muted mt-8 mb-0">${escapeHtml(s.description || "Tap to see chapters →")}</p>
+          <div class="row-between"><strong>${escapeHtml(s.title || "Subject")}</strong><span class="badge">Open →</span></div>
+          <p class="small muted mt-8 mb-0">${escapeHtml(s.description || "Tap to see chapters")}</p>
         </a>`).join("")}</div>`}
   `);
 
-  $("#manageSubjectsBtn")?.addEventListener("click", () => openManageSubjects(validSubjects));
+  const openManage = () => openManageSubjects(all, selectedIds);
+  $("#manageBtn")?.addEventListener("click", openManage);
+  $("#emptyManage")?.addEventListener("click", openManage);
 }
 
-function openManageSubjects(subjects) {
-  openModal(`
+function openManageSubjects(allSubjects, selectedIds) {
+  const yours = allSubjects.filter(s => selectedIds.has(s.id));
+  const available = allSubjects.filter(s => !selectedIds.has(s.id));
+
+  const modal = openModal(`
     <div class="modal-head"><h2>Manage Subjects</h2><button class="modal-close" data-modal-close>✕</button></div>
-    <p class="small muted">Remove subjects you no longer want to study. Your reading/practice history is preserved.</p>
-    <div class="stack mt-16">
-      ${subjects.length === 0
-        ? '<p class="small muted">No subjects in your list.</p>'
-        : subjects.map(s => `
+    <div class="tabs">
+      <button class="tab active" data-mtab="yours">Your Subjects (${yours.length})</button>
+      <button class="tab" data-mtab="available">Available (${available.length})</button>
+    </div>
+    <div id="mContent"></div>
+  `, true);
+
+  const render = (tab) => {
+    $$(".tab", modal).forEach(t => t.classList.toggle("active", t.dataset.mtab === tab));
+    const box = $("#mContent", modal);
+    if (tab === "yours") {
+      box.innerHTML = yours.length === 0
+        ? '<p class="small muted center">No subjects yet. Switch to Available to add.</p>'
+        : `<div class="stack">${yours.map(s => `
           <div class="card" style="box-shadow:none;margin:0">
             <div class="row-between">
               <strong>${escapeHtml(s.title || "Subject")}</strong>
-              <button class="btn btn-small btn-danger" data-remove-mgmt="${escapeHtml(s.id)}" data-remove-title="${escapeHtml(s.title || "")}">Remove</button>
+              <button class="btn btn-small btn-danger" data-remove="${escapeHtml(s.id)}">Remove</button>
             </div>
-          </div>`).join("")}
-    </div>
-    <div class="form-actions"><button class="btn btn-primary" data-modal-close>Done</button></div>
-  `, true);
-
-  $$("[data-remove-mgmt]").forEach(b => b.addEventListener("click", async () => {
-    if (!(await confirmDialog(`Remove "${b.dataset.removeTitle}" from My Subjects?`, { danger: true, confirmText: "Remove" }))) return;
-    try {
-      await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.removeMgmt));
-      toast("Removed.", "success");
-      closeModal();
-      router();
-    } catch (err) { toast(friendlyError(err, "removing"), "error"); }
-  }));
+          </div>`).join("")}</div>`;
+      $$("[data-remove]", modal).forEach(b => b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          await deleteDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.remove));
+          MEM.del("selectedSubjects");
+          toast("Removed.", "success");
+          closeModal(); router();
+        } catch (err) { toast(friendlyError(err, "removing"), "error"); b.disabled = false; }
+      }));
+    } else {
+      box.innerHTML = available.length === 0
+        ? '<p class="small muted center">All subjects added!</p>'
+        : `<div class="stack">${available.map(s => `
+          <div class="card" style="box-shadow:none;margin:0">
+            <div class="row-between">
+              <div><strong>${escapeHtml(s.title || "Subject")}</strong><p class="tiny muted mb-0">${escapeHtml(s.description || "")}</p></div>
+              <button class="btn btn-small btn-primary" data-add-m="${escapeHtml(s.id)}" data-title="${escapeHtml(s.title || "")}">+ Add</button>
+            </div>
+          </div>`).join("")}</div>`;
+      $$("[data-add-m]", modal).forEach(b => b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          await setDoc(doc(db, "users", S.user.uid, "selectedSubjects", b.dataset.addM), {
+            subjectId: b.dataset.addM, title: b.dataset.title || "", addedAt: serverTimestamp()
+          });
+          MEM.del("selectedSubjects");
+          toast("Added.", "success");
+          closeModal(); router();
+        } catch (err) { toast(friendlyError(err, "adding"), "error"); b.disabled = false; }
+      }));
+    }
+  };
+  $$(".tab", modal).forEach(t => t.addEventListener("click", () => render(t.dataset.mtab)));
+  render("yours");
 }
 
-/* ============ SUBJECT DETAIL (fix #2 — clickable chapter cards) ============ */
+/* ============ SUBJECT DETAIL (clickable chapter cards) ============ */
 async function renderSubjectDetail(id, token) {
   if (!id) return setPage(errorState("Not found", "No subject specified."));
   setPage(spinner("Loading subject…"));
@@ -692,50 +832,51 @@ async function renderSubjectDetail(id, token) {
   try { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) subject = { id: s.id, ...s.data() }; }
   catch (err) { return setPage(errorState("Error", friendlyError(err, "loading subject"))); }
   if (isStale(token)) return;
-  if (!subject) return setPage(emptyState("Subject not found", "May be unpublished or deleted."));
-  if (subject.status === "archived") return setPage(emptyState("Subject unavailable", "This subject has been archived by the administrator."));
+  if (!subject) return setPage(emptyState("Subject not found", "May be unpublished."));
+  if (subject.status === "archived") return setPage(emptyState("Subject unavailable", "Archived by admin."));
 
-  let chapters = [];
-  try {
-    const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",id), where("status","==","published"), limit(200)));
-    chapters = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
-  } catch (err) { console.warn("Chapters load error", err); }
+  const chapters = await loadChapters(id);
+  if (isStale(token)) return;
 
   setPage(`
     <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <span>${escapeHtml(subject.title || "")}</span></div>
     <div class="page-head"><div><h1 class="page-title">${escapeHtml(subject.title || "Subject")}</h1>
     <p class="page-sub">${escapeHtml(subject.description || "")}</p></div></div>
     ${chapters.length === 0
-      ? emptyState("No chapters yet", "The administrator hasn't added published chapters to this subject yet.")
+      ? emptyState("No chapters yet", "No published chapters.")
       : `<div class="stack">${chapters.map(c => `
-          <a class="card clickable" href="#/chapter/${encodeURIComponent(c.id)}">
-            <div class="row-between">
-              <div style="flex:1">
-                <strong style="font-size:1.02rem">${c.chapterNumber ? `Chapter ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
-                <p class="small muted mb-0 mt-8">${escapeHtml(c.description || "Tap to see study materials and practice MCQs →")}</p>
-              </div>
+        <a class="card clickable" href="#/chapter/${encodeURIComponent(c.id)}">
+          <div class="row-between">
+            <div style="flex:1">
+              <strong style="font-size:1.02rem">${c.chapterNumber ? `Chapter ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
+              <p class="small muted mb-0 mt-8">${escapeHtml(c.description || "Tap to see materials and MCQs →")}</p>
             </div>
-          </a>`).join("")}</div>`}
+          </div>
+        </a>`).join("")}</div>`}
   `);
 }
 
-/* ============ CHAPTER DETAIL (fix #3 — inline materials + icon resources) ============ */
-function renderResourceIcon(r) {
+/* ============ CHAPTER DETAIL (inline YouTube + PDFs) ============ */
+function renderResource(r) {
   const url = safeUrl(r.url);
   if (!url) return "";
-  let icon = "🔗";
-  let label = r.title || "Link";
-  if (r.type === "youtube" || url.includes("youtube") || url.includes("youtu.be")) {
-    icon = "▶️";
-    if (!r.title) label = "YouTube";
-  } else if (r.type === "pdf" || url.toLowerCase().endsWith(".pdf")) {
-    icon = "📄";
-    if (!r.title) label = "PDF";
-  } else if (r.type === "website") {
-    icon = "🌐";
-    if (!r.title) label = "Website";
+  const vid = youtubeId(url);
+  if (vid) {
+    // Inline YouTube thumbnail with play button
+    const title = r.title || "YouTube Video";
+    return `<div class="youtube-inline" data-vid="${escapeHtml(vid)}">
+      <img src="https://img.youtube.com/vi/${escapeHtml(vid)}/hqdefault.jpg" alt="${escapeHtml(title)}" loading="lazy">
+      <div class="play-overlay">
+        <div class="play-button">▶</div>
+        <div class="play-label">${escapeHtml(title)}</div>
+      </div>
+    </div>`;
   }
-  return `<a class="resource-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(label)}">
+  // PDF / website: icon button
+  let icon = "🔗"; let label = r.title || "Link";
+  if (r.type === "pdf" || url.toLowerCase().endsWith(".pdf")) { icon = "📄"; if (!r.title) label = "PDF"; }
+  else if (r.type === "website") { icon = "🌐"; if (!r.title) label = "Website"; }
+  return `<a class="resource-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
     <span class="icon">${icon}</span><span>${escapeHtml(label)}</span>
   </a>`;
 }
@@ -749,32 +890,24 @@ async function renderChapterDetail(id, token) {
   if (isStale(token)) return;
   if (!chapter) return setPage(emptyState("Chapter not found", "May be unpublished."));
 
-  const [matSnap, qSnap, progSnap] = await Promise.all([
-    getDocs(query(collection(db, "materials"), where("chapterId","==",id), where("status","==","published"), limit(100))).catch(() => null),
-    getDocs(query(collection(db, "questions"), where("chapterId","==",id), where("status","==","published"), limit(500))).catch(() => null),
-    getDocs(query(collection(db, "users", S.user.uid, "materialProgress"), where("chapterId","==",id), limit(100))).catch(() => null)
+  const [materials, questions, progSnap, siblings] = await Promise.all([
+    loadMaterials(id),
+    loadQuestions(id),
+    getDocs(query(collection(db, "users", S.user.uid, "materialProgress"), where("chapterId","==",id), limit(100))).catch(() => null),
+    loadChapters(chapter.subjectId || "")
   ]);
   if (isStale(token)) return;
-  const materials = (matSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const questions = (qSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
+
   const readIds = new Set((progSnap?.docs || []).filter(d => d.data().status === "read").map(d => d.data().materialId));
   const byLevel = { L1: questions.filter(q => q.level === "L1").length, L2: questions.filter(q => q.level === "L2").length, L3: questions.filter(q => q.level === "L3").length };
-
-  // Siblings for prev/next
-  let siblings = [];
-  try {
-    const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",chapter.subjectId || ""), where("status","==","published"), limit(200)));
-    siblings = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
-  } catch {}
   const idx = siblings.findIndex(c => c.id === id);
   const prev = idx > 0 ? siblings[idx - 1] : null;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
-  // Render each material inline with full HTML
   const materialsHtml = materials.length === 0
-    ? `<p class="small muted">No published study materials in this chapter yet.</p>`
+    ? `<p class="small muted">No published materials.</p>`
     : materials.map(m => {
-        const html = m.html ? sanitizeHtml(m.html) : (m.content ? sanitizeHtml(m.content) : "");
+        const html = sanitizeHtml(m.html || m.content || "");
         const resources = Array.isArray(m.resources) ? m.resources : [];
         const isRead = readIds.has(m.id);
         return `<div class="material-inline" id="mat-${escapeHtml(m.id)}">
@@ -791,7 +924,7 @@ async function renderChapterDetail(id, token) {
             </button>
           </div>
           <div class="reader-content">${html || '<p class="muted small">No content.</p>'}</div>
-          ${resources.length ? `<div class="resource-icons">${resources.map(renderResourceIcon).join("")}</div>` : ""}
+          ${resources.length ? `<div class="resource-icons">${resources.map(renderResource).join("")}</div>` : ""}
         </div>`;
       }).join("");
 
@@ -802,21 +935,23 @@ async function renderChapterDetail(id, token) {
 
     <div class="card mb-16">
       <h2 class="card-title">📖 Study Materials (${materials.length})</h2>
-      <p class="small muted mb-16">All materials are shown below. Click any YouTube/PDF/Website link to open in a new tab.</p>
+      <p class="small muted mb-16">Click a video thumbnail to play. PDF links open in a new tab.</p>
       ${materialsHtml}
     </div>
 
     <div class="card">
-      <h2 class="card-title">❓ Practice MCQs</h2>
-      <div class="grid grid-3 mb-16">
-        ${["L1","L2","L3"].map(l => `<div class="card" style="box-shadow:none;text-align:center">
-          <span class="badge ${l}">${levelLabel(l)}</span>
-          <p class="stat-value mt-8">${byLevel[l]}</p>
-          <p class="tiny muted">questions</p>
-          <a class="btn btn-small ${byLevel[l] ? "btn-primary" : ""}" href="#/practice?chapter=${encodeURIComponent(id)}&level=${l}" ${byLevel[l] ? "" : 'style="opacity:.5;pointer-events:none"'}>Practice</a>
-        </div>`).join("")}
-      </div>
-      <a class="btn btn-primary btn-block" href="#/practice?chapter=${encodeURIComponent(id)}">Practice All (${questions.length} questions)</a>
+      <h2 class="card-title">❓ Practice MCQs (${questions.length})</h2>
+      ${questions.length === 0
+        ? `<p class="small muted">No MCQs yet.</p>`
+        : `<div class="grid grid-3">
+            ${["L1","L2","L3"].map(l => byLevel[l] > 0 ? `
+              <a class="card clickable" href="#/practice?chapter=${encodeURIComponent(id)}&level=${l}" style="text-align:center">
+                <span class="badge ${l}">${levelLabel(l)}</span>
+                <p class="stat-value mt-8 mb-0">${byLevel[l]}</p>
+                <p class="tiny muted mb-0">questions</p>
+              </a>` : "").join("")}
+          </div>
+          <a class="btn btn-primary btn-block mt-16" href="#/practice?chapter=${encodeURIComponent(id)}">Practice All (${questions.length})</a>`}
     </div>
 
     <div class="row mt-16" style="justify-content:space-between">
@@ -825,7 +960,13 @@ async function renderChapterDetail(id, token) {
     </div>
   `);
 
-  // Mark-read buttons
+  // YouTube inline play
+  $$(".youtube-inline").forEach(el => el.addEventListener("click", () => {
+    const vid = el.dataset.vid;
+    el.outerHTML = `<div class="video-embed"><iframe src="https://www.youtube.com/embed/${encodeURIComponent(vid)}?autoplay=1" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+  }));
+
+  // Mark read
   $$("[data-mark-read]").forEach(btn => btn.addEventListener("click", async () => {
     const mid = btn.dataset.markRead;
     btn.disabled = true;
@@ -835,60 +976,15 @@ async function renderChapterDetail(id, token) {
         status: "read", readAt: serverTimestamp(), updatedAt: serverTimestamp()
       }, { merge: true });
       await touchSession({ materialsRead: 1 });
-      btn.classList.add("read");
-      btn.textContent = "✓ Read";
+      btn.classList.add("read"); btn.textContent = "✓ Read";
       toast("Marked as read.", "success");
-    } catch (err) {
-      toast(friendlyError(err, "saving progress"), "error");
-      btn.disabled = false;
-    }
+    } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; }
   }));
 }
 
-/* ============ MATERIAL READER (kept for direct link) ============ */
-async function renderMaterial(id, token) {
-  if (!id) return setPage(errorState("Not found", "No material specified."));
-  setPage(spinner("Loading…"));
-  let m = null;
-  try { const s = await getDoc(doc(db, "materials", id)); if (s.exists()) m = { id: s.id, ...s.data() }; }
-  catch (err) { return setPage(errorState("Error", friendlyError(err, "loading material"))); }
-  if (isStale(token)) return;
-  if (!m) return setPage(emptyState("Material not found", "May be unpublished."));
-
-  const html = m.html ? sanitizeHtml(m.html) : (m.content ? sanitizeHtml(m.content) : `<p class="muted">No content.</p>`);
-  const resources = Array.isArray(m.resources) ? m.resources : [];
-
-  setPage(`
-    <div class="breadcrumbs"><a href="#/all-subjects">Subjects</a> / <a href="#/chapter/${encodeURIComponent(m.chapterId || "")}">Chapter</a> / <span>${escapeHtml(m.title || "Material")}</span></div>
-    <div class="card">
-      <div class="row-between">
-        <div class="row"><span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span></div>
-        <div class="row">
-          <button class="btn btn-small" data-font="-">A−</button>
-          <button class="btn btn-small" data-font="+">A+</button>
-          <button class="btn btn-small" onclick="window.print()">Print</button>
-        </div>
-      </div>
-      <h1 class="page-title mt-16">${escapeHtml(m.title || "Study material")}</h1>
-      <div class="reader-content mt-16">${html}</div>
-      ${resources.length ? `<div class="resource-icons">${resources.map(renderResourceIcon).join("")}</div>` : ""}
-    </div>
-    <div class="row mt-16 no-print">
-      <a class="btn" href="#/chapter/${encodeURIComponent(m.chapterId || "")}">← Back to chapter</a>
-      <a class="btn btn-primary" href="#/practice?chapter=${encodeURIComponent(m.chapterId || "")}&level=${encodeURIComponent(m.level || "L1")}">Practice MCQs</a>
-    </div>
-  `);
-
-  $$("[data-font]").forEach(b => b.addEventListener("click", () => {
-    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--reader-size")) || 17;
-    const next = b.dataset.font === "+" ? Math.min(24, cur + 1) : Math.max(14, cur - 1);
-    document.documentElement.style.setProperty("--reader-size", `${next}px`);
-  }));
-}
-
-/* ============ PRACTICE (fix #4 — submit + results) ============ */
+/* ============ PRACTICE (instant submit, clickable) ============ */
 async function renderPractice(params, token) {
-  setPage(spinner("Loading questions…"));
+  setPage(spinner("Loading…"));
   const chapterId = params.get("chapter");
   const level = params.get("level");
   const ids = params.get("ids");
@@ -901,15 +997,12 @@ async function renderPractice(params, token) {
         if (s.exists()) questions.push({ id: s.id, ...s.data() });
       }
     } else if (chapterId) {
-      const snap = await getDocs(query(collection(db, "questions"), where("chapterId","==",chapterId), where("status","==","published"), limit(500)));
-      questions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      questions = await loadQuestions(chapterId);
       if (level) questions = questions.filter(q => q.level === level);
     }
-  } catch (err) {
-    return setPage(errorState("Error", friendlyError(err, "loading questions")));
-  }
+  } catch (err) { return setPage(errorState("Error", friendlyError(err, "loading"))); }
   if (isStale(token)) return;
-  if (!questions.length) return setPage(emptyState("No questions", "No published questions match this scope.", `<a class="btn" href="#/all-subjects">Browse subjects</a>`));
+  if (!questions.length) return setPage(emptyState("No questions", "No published questions match.", `<a class="btn" href="#/all-subjects">Browse</a>`));
 
   questions = questions.sort(() => Math.random() - 0.5);
   S.practice = { questions, index: 0, answers: new Map(), submitted: false, recorded: new Set() };
@@ -923,28 +1016,28 @@ function renderPracticeQuestion() {
   const q = p.questions[p.index];
   const selected = p.answers.get(q.id);
   const options = q.options || [];
+  const isLast = p.index === p.questions.length - 1;
   const answeredCount = p.answers.size;
 
   setPage(`
     <div class="page-head">
       <div>
         <h1 class="page-title">Practice MCQs</h1>
-        <p class="page-sub">Question ${p.index + 1} of ${p.questions.length} · ${answeredCount} answered</p>
+        <p class="page-sub">Q ${p.index + 1} of ${p.questions.length} · ${answeredCount} answered</p>
       </div>
-      <button class="btn btn-primary" id="submitPractice">Submit & View Results</button>
+      <button class="btn btn-primary" id="submitTop">Submit</button>
     </div>
-    <div class="question-card" style="max-width:840px;margin:0 auto">
+    <div class="question-card">
       <div class="card">
         <div class="row mb-16">
           <span class="badge ${escapeHtml(q.level || "L1")}">${levelLabel(q.level)}</span>
           ${q.importance && q.importance !== "normal" ? `<span class="badge ${escapeHtml(q.importance)}">${escapeHtml(q.importance)}</span>` : ""}
         </div>
         <div class="question-stem">${escapeHtml(q.questionText || "Question")}</div>
-        <div class="option-list" id="optList">
+        <div class="option-list">
           ${options.map((opt, i) => {
             const key = opt.id || String.fromCharCode(97 + i);
-            const sel = selected === key;
-            return `<button class="option-btn ${sel ? "selected" : ""}" data-opt="${escapeHtml(key)}" type="button">
+            return `<button class="option-btn ${selected === key ? "selected" : ""}" data-opt="${escapeHtml(key)}" type="button">
               <span class="option-key">${String.fromCharCode(65 + i)}</span>
               <span>${escapeHtml(opt.text || "")}</span>
             </button>`;
@@ -952,19 +1045,29 @@ function renderPracticeQuestion() {
         </div>
         <div class="row mt-16" style="justify-content:space-between">
           <button class="btn" id="prevBtn" ${p.index === 0 ? "disabled" : ""}>← Previous</button>
-          <button class="btn" id="nextBtn" ${p.index >= p.questions.length - 1 ? "disabled" : ""}>Next →</button>
+          ${isLast
+            ? `<button class="btn btn-primary" id="submitBottom">Submit & View Results</button>`
+            : `<button class="btn" id="nextBtn">Next →</button>`}
         </div>
       </div>
     </div>
   `);
 
   $$("[data-opt]").forEach(b => b.addEventListener("click", () => {
-    p.answers.set(q.id, b.dataset.opt);
+    const key = b.dataset.opt;
+    p.answers.set(q.id, key);
+    // Fire-and-forget progress record (only once per question)
+    if (!p.recorded.has(q.id)) {
+      p.recorded.add(q.id);
+      recordAttempt(q, key);
+    }
     renderPracticeQuestion();
   }));
+
   $("#prevBtn")?.addEventListener("click", () => { if (p.index > 0) { p.index--; renderPracticeQuestion(); } });
   $("#nextBtn")?.addEventListener("click", () => { if (p.index < p.questions.length - 1) { p.index++; renderPracticeQuestion(); } });
-  $("#submitPractice")?.addEventListener("click", () => submitPractice());
+  $("#submitTop")?.addEventListener("click", () => submitPractice());
+  $("#submitBottom")?.addEventListener("click", () => submitPractice());
 }
 
 function bindPracticeKeys() {
@@ -977,31 +1080,23 @@ function bindPracticeKeys() {
     else if (/^[1-6]$/.test(e.key)) {
       const q = p.questions[p.index];
       const opt = (q.options || [])[Number(e.key) - 1];
-      if (opt) { p.answers.set(q.id, opt.id || String.fromCharCode(97 + Number(e.key) - 1)); renderPracticeQuestion(); }
+      if (opt) {
+        const key = opt.id || String.fromCharCode(97 + Number(e.key) - 1);
+        p.answers.set(q.id, key);
+        if (!p.recorded.has(q.id)) { p.recorded.add(q.id); recordAttempt(q, key); }
+        renderPracticeQuestion();
+      }
     }
   };
   document.addEventListener("keydown", handler);
   S.pageCleanup = () => document.removeEventListener("keydown", handler);
 }
 
-async function submitPractice() {
+function submitPractice() {
   const p = S.practice;
-  if (!p) return;
-  const unanswered = p.questions.filter(q => !p.answers.get(q.id)).length;
-  if (unanswered > 0) {
-    const ok = await confirmDialog(`${unanswered} question${unanswered === 1 ? "" : "s"} unanswered. Submit anyway?`, { confirmText: "Submit" });
-    if (!ok) return;
-  }
-  // Persist all attempts
-  for (const q of p.questions) {
-    const sel = p.answers.get(q.id);
-    if (sel && !p.recorded.has(q.id)) {
-      p.recorded.add(q.id);
-      await recordAttempt(q, sel);
-    }
-  }
+  if (!p || p.submitted) return;
   p.submitted = true;
-  renderPracticeResults();
+  renderPracticeResults(); // Instant — no Firestore loops
 }
 
 function renderPracticeResults() {
@@ -1019,54 +1114,37 @@ function renderPracticeResults() {
 
   setPage(`
     <div class="page-head">
-      <div><h1 class="page-title">Practice Results</h1>
-      <p class="page-sub">Review every question below.</p></div>
-      <div class="row">
-        <button class="btn" id="retryBtn">🔄 Retry</button>
-        <a class="btn btn-primary" href="#/all-subjects">Back to Subjects</a>
-      </div>
+      <div><h1 class="page-title">Practice Results</h1></div>
+      <div class="row"><button class="btn" id="retryBtn">🔄 Retry</button><a class="btn btn-primary" href="#/all-subjects">Done</a></div>
     </div>
-
     <div class="result-hero mb-16">
       <div class="result-score">${pct}%</div>
       <div class="result-status">${correct} of ${total} correct</div>
     </div>
-
     <div class="grid grid-3 mb-16">
-      <div class="stat-card" style="background:var(--green);color:#fff;border:0">
-        <div class="stat-value">${correct}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Correct</div>
-      </div>
-      <div class="stat-card" style="background:var(--red);color:#fff;border:0">
-        <div class="stat-value">${incorrect}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Incorrect</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">${unanswered}</div><div class="stat-label">Unanswered</div>
-      </div>
+      <div class="stat-card" style="background:var(--green);color:#fff;border:0"><div class="stat-value">${correct}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Correct</div></div>
+      <div class="stat-card" style="background:var(--red);color:#fff;border:0"><div class="stat-value">${incorrect}</div><div class="stat-label" style="color:rgba(255,255,255,.85)">Incorrect</div></div>
+      <div class="stat-card"><div class="stat-value">${unanswered}</div><div class="stat-label">Unanswered</div></div>
     </div>
-
     <div class="card">
-      <h2 class="card-title">Detailed review — scroll to see all questions</h2>
+      <h2 class="card-title">Review</h2>
       ${p.questions.map((q, i) => {
         const sel = p.answers.get(q.id);
         const isCorrect = sel === q.correctOptionId;
         const isWrong = sel && !isCorrect;
-        const statusText = !sel ? "Unanswered" : isCorrect ? "Correct" : "Incorrect";
-        const statusClass = !sel ? "" : isCorrect ? "green" : "red";
         const options = q.options || [];
         return `<div class="card mb-16" style="box-shadow:none">
           <div class="row-between mb-8">
             <strong>Q${i + 1}. ${escapeHtml(q.questionText || "")}</strong>
-            <span class="badge ${statusClass}">${statusText}</span>
+            <span class="badge ${!sel ? "" : isCorrect ? "green" : "red"}">${!sel ? "Unanswered" : isCorrect ? "Correct" : "Incorrect"}</span>
           </div>
           <div class="option-list">
             ${options.map((o, oi) => {
               const key = o.id || String.fromCharCode(97 + oi);
               const isRight = key === q.correctOptionId;
               const isChosen = sel === key;
-              let cls = "result-neutral";
-              if (isRight) cls = "result-correct";
-              else if (isChosen && !isRight) cls = "result-wrong";
-              const marker = isRight ? " ✓ Correct answer" : (isChosen && !isRight ? " ✗ Your answer" : "");
+              const cls = isRight ? "result-correct" : (isChosen && !isRight ? "result-wrong" : "result-neutral");
+              const marker = isRight ? " ✓" : (isChosen && !isRight ? " ✗ your answer" : "");
               return `<div class="option-btn ${cls}" style="cursor:default">
                 <span class="option-key">${String.fromCharCode(65 + oi)}</span>
                 <span>${escapeHtml(o.text || "")}${marker}</span>
@@ -1077,21 +1155,19 @@ function renderPracticeResults() {
         </div>`;
       }).join("")}
     </div>
-
     <div class="row mt-16" style="justify-content:center">
-      <button class="btn btn-primary" id="retryBtn2">🔄 Retry Practice</button>
-      <a class="btn" href="#/all-subjects">Back to Subjects</a>
+      <button class="btn btn-primary" id="retryBtn2">🔄 Retry</button>
+      <a class="btn" href="#/all-subjects">Back</a>
     </div>
   `);
-
   $("#retryBtn")?.addEventListener("click", () => router());
   $("#retryBtn2")?.addEventListener("click", () => router());
 }
 
 async function recordAttempt(q, selected) {
   const correct = selected === q.correctOptionId;
-  const ref = doc(db, "users", S.user.uid, "questionProgress", q.id);
   try {
+    const ref = doc(db, "users", S.user.uid, "questionProgress", q.id);
     const snap = await getDoc(ref);
     const d = snap.exists() ? snap.data() : {};
     await setDoc(ref, {
@@ -1113,15 +1189,11 @@ async function touchSession(updates) {
     const merged = { dateKey: key, updatedAt: serverTimestamp() };
     Object.entries(updates).forEach(([k, v]) => { merged[k] = (d[k] || 0) + (typeof v === "number" ? v : 0); });
     await setDoc(ref, merged, { merge: true });
+    MEM.del("todaySession");
   } catch (err) { console.warn("Session save failed", err); }
 }
-async function getTodaySession() {
-  if (!S.user) return null;
-  try { const s = await getDoc(doc(db, "users", S.user.uid, "studySessions", nepalDateKey())); return s.exists() ? s.data() : null; }
-  catch { return null; }
-}
 
-/* ============ PROGRESS, SAVED, PROFILE, SETTINGS ============ */
+/* ============ PROGRESS, SAVED, PROFILE ============ */
 async function renderProgress(token) {
   setPage(spinner("Loading…"));
   const [readSnap, qpSnap] = await Promise.all([
@@ -1133,21 +1205,16 @@ async function renderProgress(token) {
   const qp = (qpSnap?.docs || []).map(d => d.data());
   const attempted = qp.filter(q => (q.attempts || 0) > 0).length;
   const correct = qp.reduce((a, q) => a + (q.correct || 0), 0);
-
   setPage(`
-    <div class="page-head"><div><h1 class="page-title">Progress</h1><p class="page-sub">Real data only.</p></div></div>
+    <div class="page-head"><div><h1 class="page-title">Progress</h1></div></div>
     <div class="grid grid-4 mb-16">
       <div class="stat-card"><div class="stat-value">${read}</div><div class="stat-label">Materials read</div></div>
-      <div class="stat-card"><div class="stat-value">${attempted}</div><div class="stat-label">Questions attempted</div></div>
-      <div class="stat-card"><div class="stat-value">${correct}</div><div class="stat-label">Correct answers</div></div>
+      <div class="stat-card"><div class="stat-value">${attempted}</div><div class="stat-label">Attempted</div></div>
+      <div class="stat-card"><div class="stat-value">${correct}</div><div class="stat-label">Correct</div></div>
       <div class="stat-card"><div class="stat-value">${attempted ? Math.round(correct / Math.max(1, attempted) * 100) : 0}%</div><div class="stat-label">Accuracy</div></div>
-    </div>
-    <div class="card"><h2 class="card-title">About</h2>
-      <p class="small muted">Reading and mastery are separate. Mastery requires repeated correct recall.</p>
     </div>
   `);
 }
-
 async function renderSaved(token) {
   setPage(spinner("Loading…"));
   const snap = await getDocs(query(collection(db, "users", S.user.uid, "savedItems"), limit(100))).catch(() => null);
@@ -1155,10 +1222,9 @@ async function renderSaved(token) {
   const items = (snap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
   setPage(`
     <div class="page-head"><div><h1 class="page-title">Saved</h1></div></div>
-    ${items.length ? `<div class="stack">${items.map(i => `<div class="card"><strong>${escapeHtml(i.title || "Saved")}</strong>${i.href ? `<a class="btn btn-small mt-8" href="${escapeHtml(i.href)}">Open</a>` : ""}</div>`).join("")}</div>` : emptyState("Nothing saved yet", "Bookmark materials or questions to see them here.")}
+    ${items.length ? `<div class="stack">${items.map(i => `<div class="card"><strong>${escapeHtml(i.title || "Saved")}</strong>${i.href ? `<a class="btn btn-small mt-8" href="${escapeHtml(i.href)}">Open</a>` : ""}</div>`).join("")}</div>` : emptyState("Nothing saved", "Bookmark items to see them here.")}
   `);
 }
-
 function renderProfile() {
   const u = S.user;
   const name = S.profile?.displayName || u.displayName || u.email?.split("@")[0] || "Student";
@@ -1175,10 +1241,10 @@ function renderProfile() {
       </div>
     </div>
     <div class="card">
-      <h2 class="card-title">Account details</h2>
+      <h2 class="card-title">Account</h2>
       <div class="form-grid">
         <div><label>Display name</label><input id="profName" value="${escapeHtml(S.profile?.displayName || name)}"></div>
-        <div><label>Daily goal (questions)</label><input id="profGoal" type="number" min="5" max="200" value="${S.profile?.dailyGoal || 20}"></div>
+        <div><label>Daily goal</label><input id="profGoal" type="number" min="5" max="200" value="${S.profile?.dailyGoal || 20}"></div>
       </div>
       <div class="form-actions"><button class="btn btn-primary" id="profSave">Save</button></div>
     </div>
@@ -1191,12 +1257,10 @@ function renderProfile() {
       await updateProfile(u, { displayName: n });
       await updateDoc(doc(db, "users", u.uid), { displayName: n, dailyGoal: g, updatedAt: serverTimestamp() });
       S.profile = { ...(S.profile || {}), displayName: n, dailyGoal: g };
-      renderProfileChrome();
-      toast("Saved.", "success");
+      renderProfileChrome(); toast("Saved.", "success");
     } catch (err) { toast(friendlyError(err, "saving"), "error"); }
   });
 }
-
 function renderSettings() {
   setPage(`
     <div class="page-head"><div><h1 class="page-title">Settings</h1></div></div>
@@ -1212,179 +1276,147 @@ function renderSettings() {
 
 /* ============ ADMIN ============ */
 async function renderAdmin(segs, token) {
-  if (!S.isOwner && !S.isAdmin) return setPage(emptyState("Admin only", "Access restricted."));
+  if (!S.isOwner && !S.isAdmin) return setPage(emptyState("Admin only", "Restricted."));
   if (!S.user.emailVerified) {
-    setPage(`<div class="card"><h2>Verify email to use admin</h2><button class="btn btn-primary" id="vBtn">Resend</button></div>`);
+    setPage(`<div class="card"><h2>Verify email</h2><button class="btn btn-primary" id="vBtn">Resend</button></div>`);
     $("#vBtn")?.addEventListener("click", resendVerify);
     return;
   }
-
   const section = segs[0];
-
   if (!section) {
     setPage(`
-      <div class="page-head"><div><h1 class="page-title">Admin Panel</h1><p class="page-sub">Manage all content.</p></div><a class="btn" href="#/home">Exit</a></div>
+      <div class="page-head"><div><h1 class="page-title">Admin Panel</h1></div><a class="btn" href="#/home">Exit</a></div>
       <div class="admin-grid">
-        <a href="#/admin/subjects" class="admin-card"><strong>📚 Subjects</strong><span>Create, edit, delete subjects</span></a>
-        <a href="#/admin/import" class="admin-card"><strong>📦 JSON Import/Export</strong><span>Bulk load content</span></a>
+        <a href="#/admin/subjects" class="admin-card"><strong>📚 Subjects</strong><span>Manage subjects, chapters, materials, MCQs</span></a>
+        <a href="#/admin/import" class="admin-card"><strong>📦 JSON Import/Export</strong><span>Bulk load and export content</span></a>
       </div>
     `);
     return;
   }
-
   if (section === "subjects") return renderAdminSubjects(token);
   if (section === "subject") return renderAdminSubjectDetail(segs[1], token);
   if (section === "chapter") return renderAdminChapterDetail(segs[1], token);
   if (section === "import") return renderAdminImport(token);
-
-  setPage(errorState("Unknown admin section", "Section does not exist."));
+  setPage(errorState("Unknown section", "Does not exist."));
 }
 
 async function renderAdminSubjects(token) {
-  setPage(spinner("Loading subjects…"));
+  setPage(spinner("Loading…"));
   const snap = await getDocs(query(collection(db, "subjects"), limit(300))).catch(() => null);
   if (isStale(token)) return;
   const subjects = (snap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
-
   setPage(`
     <div class="page-head"><div><h1 class="page-title">Manage Subjects</h1>
     <p class="page-sub">${subjects.length} total</p></div>
-    <div class="row"><a class="btn" href="#/admin">← Back</a><button class="btn btn-primary" id="newSubjectBtn">+ New Subject</button></div></div>
+    <div class="row"><a class="btn" href="#/admin">← Back</a><button class="btn btn-primary" id="newSub">+ New</button></div></div>
     ${subjects.length === 0
-      ? emptyState("No subjects yet", "Create your first subject to start building content.", `<button class="btn btn-primary" id="newSubjectEmpty">+ New Subject</button>`)
+      ? emptyState("No subjects", "Create your first subject.")
       : `<div class="stack">${subjects.map(s => `<div class="card">
           <div class="row-between">
-            <div><strong>${escapeHtml(s.title || "Untitled")}</strong>
-              <div class="list-item-meta mt-8">${statusBadge(s.status)}</div>
-            </div>
+            <div><strong>${escapeHtml(s.title || "Untitled")}</strong><div class="list-item-meta mt-8">${statusBadge(s.status)}</div></div>
             <div class="row">
-              <a class="btn btn-small btn-primary" href="#/admin/subject/${encodeURIComponent(s.id)}">Manage Chapters</a>
-              <button class="btn btn-small" data-edit-sub="${escapeHtml(s.id)}">Edit</button>
-              <button class="btn btn-small btn-danger" data-del-sub="${escapeHtml(s.id)}" data-del-title="${escapeHtml(s.title || "")}">Delete</button>
+              <a class="btn btn-small btn-primary" href="#/admin/subject/${encodeURIComponent(s.id)}">Chapters</a>
+              <button class="btn btn-small" data-edit="${escapeHtml(s.id)}">Edit</button>
+              <button class="btn btn-small btn-danger" data-del="${escapeHtml(s.id)}" data-title="${escapeHtml(s.title || "")}">Delete</button>
             </div>
           </div>
         </div>`).join("")}</div>`}
   `);
-
-  const openNew = () => openSubjectForm(null);
-  $("#newSubjectBtn")?.addEventListener("click", openNew);
-  $("#newSubjectEmpty")?.addEventListener("click", openNew);
-  $$("[data-edit-sub]").forEach(b => b.addEventListener("click", () => openSubjectForm(b.dataset.editSub)));
-  $$("[data-del-sub]").forEach(b => b.addEventListener("click", async () => {
-    if (!(await confirmDialog(`Delete subject "${b.dataset.delTitle}"? Chapters and MCQs will remain in Firestore but be hidden. This cannot be undone.`, { danger: true, confirmText: "Delete" }))) return;
-    try {
-      await deleteDoc(doc(db, "subjects", b.dataset.delSub));
-      toast("Subject deleted.", "success");
-      router();
-    } catch (err) { toast(friendlyError(err, "deleting"), "error"); }
+  $("#newSub")?.addEventListener("click", () => openSubjectForm(null));
+  $$("[data-edit]").forEach(b => b.addEventListener("click", () => openSubjectForm(b.dataset.edit)));
+  $$("[data-del]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog(`Delete "${b.dataset.title}"?`, { danger: true, confirmText: "Delete" }))) return;
+    try { await deleteDoc(doc(db, "subjects", b.dataset.del)); MEM.clear(); toast("Deleted.", "success"); router(); }
+    catch (err) { toast(friendlyError(err, "deleting"), "error"); }
   }));
 }
 
 function openSubjectForm(id) {
   (async () => {
-    let existing = {};
-    if (id) { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) existing = s.data(); }
+    let ex = {};
+    if (id) { const s = await getDoc(doc(db, "subjects", id)); if (s.exists()) ex = s.data(); }
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} Subject</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
-        <div><label>Title <span class="required">*</span></label><input id="subTitle" value="${escapeHtml(existing.title || "")}"></div>
-        <div><label>Code (optional)</label><input id="subCode" value="${escapeHtml(existing.code || "")}"></div>
-        <div><label>Description</label><textarea id="subDesc">${escapeHtml(existing.description || "")}</textarea></div>
-        <div><label>Order</label><input id="subOrder" type="number" value="${existing.order || 0}"></div>
+        <div><label>Title <span class="required">*</span></label><input id="subTitle" value="${escapeHtml(ex.title || "")}"></div>
+        <div><label>Description</label><textarea id="subDesc">${escapeHtml(ex.description || "")}</textarea></div>
         <div><label>Status</label><select id="subStatus">
-          <option value="draft" ${existing.status === "draft" ? "selected" : ""}>Draft</option>
-          <option value="published" ${existing.status === "published" ? "selected" : ""}>Published</option>
-          <option value="archived" ${existing.status === "archived" ? "selected" : ""}>Archived</option>
+          <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${ex.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${ex.status === "archived" ? "selected" : ""}>Archived</option>
         </select></div>
       </div>
       <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveSub">Save</button></div>
     `, true);
-
     $("#saveSub").onclick = async () => {
-      const btn = $("#saveSub");
-      btn.disabled = true; btn.textContent = "Saving…";
+      const btn = $("#saveSub"); btn.disabled = true; btn.textContent = "Saving…";
       try {
         const title = $("#subTitle").value.trim();
         if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        const data = {
-          title, code: $("#subCode").value.trim(), description: $("#subDesc").value.trim(),
-          order: Number($("#subOrder").value || 0), status: $("#subStatus").value,
-          updatedAt: serverTimestamp()
-        };
+        const data = { title, description: $("#subDesc").value.trim(), status: $("#subStatus").value, updatedAt: serverTimestamp() };
         if (!id) data.createdAt = serverTimestamp();
         const ref = id ? doc(db, "subjects", id) : doc(collection(db, "subjects"));
         await setDoc(ref, data, { merge: true });
-        toast("Subject saved.", "success");
-        closeModal();
-        router();
-      } catch (err) {
-        console.error("Save subject error", err);
-        toast(friendlyError(err, "saving subject"), "error", 5000);
-        btn.disabled = false; btn.textContent = "Save";
-      }
+        MEM.clear();
+        toast("Saved.", "success"); closeModal(); router();
+      } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; btn.textContent = "Save"; }
     };
   })();
 }
 
 async function renderAdminSubjectDetail(subjectId, token) {
-  if (!subjectId) return setPage(errorState("Not found", "No subject ID."));
+  if (!subjectId) return setPage(errorState("Not found", "No ID."));
   setPage(spinner("Loading…"));
   let subject = null;
   try { const s = await getDoc(doc(db, "subjects", subjectId)); if (s.exists()) subject = { id: s.id, ...s.data() }; }
   catch (err) { return setPage(errorState("Error", friendlyError(err, "loading"))); }
   if (isStale(token)) return;
-  if (!subject) return setPage(emptyState("Subject not found", "May have been deleted."));
-
+  if (!subject) return setPage(emptyState("Not found", "Deleted."));
   const chSnap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",subjectId), limit(300))).catch(() => null);
   if (isStale(token)) return;
   const chapters = (chSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
 
   setPage(`
     <div class="breadcrumbs"><a href="#/admin/subjects">Subjects</a> / <span>${escapeHtml(subject.title || "")}</span></div>
-    <div class="page-head"><div><h1 class="page-title">${escapeHtml(subject.title || "Subject")} — Chapters</h1>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(subject.title || "")} — Chapters</h1>
     <p class="page-sub">${chapters.length} chapters</p></div>
-    <div class="row"><a class="btn" href="#/admin/subjects">← Subjects</a><button class="btn btn-primary" id="newChBtn">+ New Chapter</button></div></div>
+    <div class="row"><a class="btn" href="#/admin/subjects">← Back</a><button class="btn btn-primary" id="newCh">+ New Chapter</button></div></div>
     ${chapters.length === 0
-      ? emptyState("No chapters yet", "Create your first chapter.", `<button class="btn btn-primary" id="newChEmpty">+ New Chapter</button>`)
+      ? emptyState("No chapters", "Create your first chapter.")
       : `<div class="stack">${chapters.map(c => `<div class="card">
           <div class="row-between">
-            <div><strong>${c.chapterNumber ? `Ch ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong>
-              <div class="list-item-meta mt-8">${statusBadge(c.status)}</div>
-            </div>
+            <div><strong>${c.chapterNumber ? `Ch ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</strong><div class="list-item-meta mt-8">${statusBadge(c.status)}</div></div>
             <div class="row">
-              <a class="btn btn-small btn-primary" href="#/admin/chapter/${encodeURIComponent(c.id)}">Open (Materials + MCQs)</a>
-              <button class="btn btn-small" data-edit-ch="${escapeHtml(c.id)}">Edit</button>
-              <button class="btn btn-small btn-danger" data-del-ch="${escapeHtml(c.id)}" data-del-title="${escapeHtml(c.title || "")}">Delete</button>
+              <a class="btn btn-small btn-primary" href="#/admin/chapter/${encodeURIComponent(c.id)}">Open</a>
+              <button class="btn btn-small" data-edit="${escapeHtml(c.id)}">Edit</button>
+              <button class="btn btn-small btn-danger" data-del="${escapeHtml(c.id)}">Delete</button>
             </div>
           </div>
         </div>`).join("")}</div>`}
   `);
-
-  const openNew = () => openChapterForm(subjectId, null);
-  $("#newChBtn")?.addEventListener("click", openNew);
-  $("#newChEmpty")?.addEventListener("click", openNew);
-  $$("[data-edit-ch]").forEach(b => b.addEventListener("click", () => openChapterForm(subjectId, b.dataset.editCh)));
-  $$("[data-del-ch]").forEach(b => b.addEventListener("click", async () => {
-    if (!(await confirmDialog(`Delete chapter "${b.dataset.delTitle}"?`, { danger: true, confirmText: "Delete" }))) return;
-    try { await deleteDoc(doc(db, "chapters", b.dataset.delCh)); toast("Deleted.", "success"); router(); }
+  $("#newCh")?.addEventListener("click", () => openChapterForm(subjectId, null));
+  $$("[data-edit]").forEach(b => b.addEventListener("click", () => openChapterForm(subjectId, b.dataset.edit)));
+  $$("[data-del]").forEach(b => b.addEventListener("click", async () => {
+    if (!(await confirmDialog("Delete this chapter?", { danger: true, confirmText: "Delete" }))) return;
+    try { await deleteDoc(doc(db, "chapters", b.dataset.del)); MEM.clear(); toast("Deleted.", "success"); router(); }
     catch (err) { toast(friendlyError(err, "deleting"), "error"); }
   }));
 }
 
 function openChapterForm(subjectId, id) {
   (async () => {
-    let existing = {};
-    if (id) { const s = await getDoc(doc(db, "chapters", id)); if (s.exists()) existing = s.data(); }
+    let ex = {};
+    if (id) { const s = await getDoc(doc(db, "chapters", id)); if (s.exists()) ex = s.data(); }
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} Chapter</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
-        <div><label>Chapter number</label><input id="chNum" type="number" value="${existing.chapterNumber || 1}"></div>
-        <div><label>Title <span class="required">*</span></label><input id="chTitle" value="${escapeHtml(existing.title || "")}"></div>
-        <div><label>Description</label><textarea id="chDesc">${escapeHtml(existing.description || "")}</textarea></div>
+        <div><label>Chapter number</label><input id="chNum" type="number" value="${ex.chapterNumber || 1}"></div>
+        <div><label>Title <span class="required">*</span></label><input id="chTitle" value="${escapeHtml(ex.title || "")}"></div>
+        <div><label>Description</label><textarea id="chDesc">${escapeHtml(ex.description || "")}</textarea></div>
         <div><label>Status</label><select id="chStatus">
-          <option value="draft" ${existing.status === "draft" ? "selected" : ""}>Draft</option>
-          <option value="published" ${existing.status === "published" ? "selected" : ""}>Published</option>
-          <option value="archived" ${existing.status === "archived" ? "selected" : ""}>Archived</option>
+          <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
+          <option value="published" ${ex.status === "published" ? "selected" : ""}>Published</option>
+          <option value="archived" ${ex.status === "archived" ? "selected" : ""}>Archived</option>
         </select></div>
       </div>
       <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveCh">Save</button></div>
@@ -1394,29 +1426,25 @@ function openChapterForm(subjectId, id) {
       try {
         const title = $("#chTitle").value.trim();
         if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        const data = {
-          title, chapterNumber: Number($("#chNum").value || 1), description: $("#chDesc").value.trim(),
-          subjectId, status: $("#chStatus").value, updatedAt: serverTimestamp()
-        };
+        const data = { title, chapterNumber: Number($("#chNum").value || 1), description: $("#chDesc").value.trim(), subjectId, status: $("#chStatus").value, updatedAt: serverTimestamp() };
         if (!id) data.createdAt = serverTimestamp();
         const ref = id ? doc(db, "chapters", id) : doc(collection(db, "chapters"));
         await setDoc(ref, data, { merge: true });
-        toast("Chapter saved.", "success");
-        closeModal();
-        router();
-      } catch (err) { toast(friendlyError(err, "saving chapter"), "error"); btn.disabled = false; btn.textContent = "Save"; }
+        MEM.clear();
+        toast("Saved.", "success"); closeModal(); router();
+      } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; btn.textContent = "Save"; }
     };
   })();
 }
 
 async function renderAdminChapterDetail(chapterId, token) {
-  if (!chapterId) return setPage(errorState("Not found", "No chapter ID."));
-  setPage(spinner("Loading chapter…"));
+  if (!chapterId) return setPage(errorState("Not found", "No ID."));
+  setPage(spinner("Loading…"));
   let chapter = null;
   try { const s = await getDoc(doc(db, "chapters", chapterId)); if (s.exists()) chapter = { id: s.id, ...s.data() }; }
   catch (err) { return setPage(errorState("Error", friendlyError(err, "loading"))); }
   if (isStale(token)) return;
-  if (!chapter) return setPage(emptyState("Chapter not found", "May have been deleted."));
+  if (!chapter) return setPage(emptyState("Not found", "Deleted."));
 
   const [matSnap, qSnap] = await Promise.all([
     getDocs(query(collection(db, "materials"), where("chapterId","==",chapterId), limit(100))).catch(() => null),
@@ -1425,19 +1453,15 @@ async function renderAdminChapterDetail(chapterId, token) {
   if (isStale(token)) return;
   const materials = (matSnap?.docs || []).map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
   const questions = (qSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
-  const lc = { L1: questions.filter(q => q.level === "L1").length, L2: questions.filter(q => q.level === "L2").length, L3: questions.filter(q => q.level === "L3").length };
 
   setPage(`
     <div class="breadcrumbs"><a href="#/admin/subjects">Subjects</a> / <a href="#/admin/subject/${encodeURIComponent(chapter.subjectId || "")}">Chapters</a> / <span>${escapeHtml(chapter.title || "")}</span></div>
-    <div class="page-head"><div><h1 class="page-title">${escapeHtml(chapter.title || "Chapter")}</h1>
-    <p class="page-sub">Manage materials and MCQs</p></div>
+    <div class="page-head"><div><h1 class="page-title">${escapeHtml(chapter.title || "")}</h1></div>
     <a class="btn" href="#/admin/subject/${encodeURIComponent(chapter.subjectId || "")}">← Back</a></div>
-
     <div class="tabs">
       <button class="tab active" data-tab="materials">📖 Materials (${materials.length})</button>
       <button class="tab" data-tab="mcqs">❓ MCQs (${questions.length})</button>
     </div>
-
     <div id="tabContent"></div>
   `);
 
@@ -1447,165 +1471,140 @@ async function renderAdminChapterDetail(chapterId, token) {
     if (tab === "materials") {
       box.innerHTML = `
         <div class="row mb-16">
-          <button class="btn btn-primary" id="addMatBtn">+ Add Material</button>
+          <button class="btn btn-primary" id="addMat">+ Add Material</button>
           <span style="flex:1"></span>
-          <input type="file" id="matImportFile" accept=".json" style="display:none">
-          <button class="btn" id="matImportBtn">📥 Import Materials JSON</button>
-          <button class="btn" id="matExportBtn">📤 Export Materials JSON</button>
+          <button class="btn" id="impMat">📥 Import</button>
+          <button class="btn" id="expMat">📤 Export</button>
         </div>
-        ${materials.length === 0
-          ? emptyState("No materials yet", "Add your first material with HTML content.", "")
+        ${materials.length === 0 ? emptyState("No materials", "Add your first.")
           : `<div class="stack">${materials.map(m => `<div class="card">
               <div class="row-between">
-                <div><strong>${escapeHtml(m.title || "Untitled")}</strong>
-                  <div class="list-item-meta mt-8">
-                    <span class="badge ${escapeHtml(m.level || "L1")}">${levelLabel(m.level)}</span>
-                    ${statusBadge(m.status)}
-                  </div>
+                <div><strong>${escapeHtml(m.title || "")}</strong>
+                  <div class="list-item-meta mt-8"><span class="badge ${m.level || "L1"}">${levelLabel(m.level)}</span>${statusBadge(m.status)}</div>
                 </div>
                 <div class="row">
-                  <button class="btn btn-small" data-preview-mat="${escapeHtml(m.id)}">Preview</button>
-                  <button class="btn btn-small" data-edit-mat="${escapeHtml(m.id)}">Edit</button>
-                  <button class="btn btn-small btn-danger" data-del-mat="${escapeHtml(m.id)}">Delete</button>
+                  <button class="btn btn-small" data-preview="${escapeHtml(m.id)}">Preview</button>
+                  <button class="btn btn-small" data-edit="${escapeHtml(m.id)}">Edit</button>
+                  <button class="btn btn-small btn-danger" data-del="${escapeHtml(m.id)}">Delete</button>
                 </div>
               </div>
-            </div>`).join("")}</div>`}
-      `;
-      $("#addMatBtn").onclick = () => openMaterialForm(chapterId, null, chapter.subjectId || "");
-      $$("[data-edit-mat]").forEach(b => b.addEventListener("click", () => openMaterialForm(chapterId, b.dataset.editMat, chapter.subjectId || "")));
-      $$("[data-preview-mat]").forEach(b => b.addEventListener("click", () => previewMaterial(b.dataset.previewMat)));
-      $$("[data-del-mat]").forEach(b => b.addEventListener("click", async () => {
-        if (!(await confirmDialog("Delete this material?", { danger: true, confirmText: "Delete" }))) return;
-        try { await deleteDoc(doc(db, "materials", b.dataset.delMat)); toast("Deleted.", "success"); router(); }
+            </div>`).join("")}</div>`}`;
+      $("#addMat").onclick = () => openMaterialForm(chapterId, null, chapter.subjectId || "");
+      $$("[data-edit]").forEach(b => b.addEventListener("click", () => openMaterialForm(chapterId, b.dataset.edit, chapter.subjectId || "")));
+      $$("[data-preview]").forEach(b => b.addEventListener("click", async () => {
+        const s = await getDoc(doc(db, "materials", b.dataset.preview));
+        if (!s.exists()) return;
+        openModal(`<div class="modal-head"><h2>${escapeHtml(s.data().title || "")}</h2><button class="modal-close" data-modal-close>✕</button></div><div class="reader-content">${sanitizeHtml(s.data().html || "")}</div>`, true);
+      }));
+      $$("[data-del]").forEach(b => b.addEventListener("click", async () => {
+        if (!(await confirmDialog("Delete?", { danger: true, confirmText: "Delete" }))) return;
+        try { await deleteDoc(doc(db, "materials", b.dataset.del)); MEM.clear(); router(); }
         catch (err) { toast(friendlyError(err, "deleting"), "error"); }
       }));
-      $("#matImportBtn").onclick = () => $("#matImportFile").click();
-      $("#matImportFile").onchange = async e => {
-        const file = e.target.files[0]; if (!file) return;
-        try {
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-          const items = Array.isArray(parsed) ? parsed : (parsed.materials || [parsed]);
-          if (!items.length) return toast("No materials found.", "error");
-          if (!(await confirmDialog(`Import ${items.length} material(s) into this chapter?`, { confirmText: "Import" }))) return;
-          for (const m of items) {
-            const ref = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
-            await setDoc(ref, {
-              title: m.title || "Imported", html: m.html || m.content || "",
-              level: m.level || "L1", importance: m.importance || "normal",
-              resources: m.resources || [], chapterId, subjectId: chapter.subjectId || "",
-              order: Number(m.order || 0), status: m.status || "draft",
-              createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-            }, { merge: true });
-          }
-          toast(`Imported ${items.length} material(s).`, "success");
-          router();
-        } catch (err) { toast(friendlyError(err, "importing"), "error"); }
+      $("#impMat").onclick = () => {
+        const input = document.createElement("input");
+        input.type = "file"; input.accept = ".json";
+        input.onchange = async e => {
+          const file = e.target.files[0]; if (!file) return;
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const items = Array.isArray(parsed) ? parsed : (parsed.materials || [parsed]);
+            if (!(await confirmDialog(`Import ${items.length} materials?`, { confirmText: "Import" }))) return;
+            for (const m of items) {
+              const ref = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
+              await setDoc(ref, { title: m.title || "Imported", html: m.html || m.content || "", level: m.level || "L1", importance: m.importance || "normal", resources: m.resources || [], chapterId, subjectId: chapter.subjectId || "", order: Number(m.order || 0), status: m.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+            }
+            MEM.clear(); toast(`Imported ${items.length}.`, "success"); router();
+          } catch (err) { toast(friendlyError(err, "importing"), "error"); }
+        };
+        input.click();
       };
-      $("#matExportBtn").onclick = () => {
-        const data = materials.map(m => ({
-          title: m.title, html: m.html, level: m.level, importance: m.importance,
-          resources: m.resources || [], order: m.order || 0, status: m.status
-        }));
+      $("#expMat").onclick = () => {
+        const data = materials.map(m => ({ title: m.title, html: m.html, level: m.level, importance: m.importance, resources: m.resources || [], order: m.order || 0, status: m.status }));
         downloadFile(`materials-${chapterId}.json`, JSON.stringify({ materials: data }, null, 2), "application/json");
       };
-    } else if (tab === "mcqs") {
+    } else {
       box.innerHTML = `
         <div class="row mb-16">
-          <button class="btn btn-primary" id="addQBtn">+ Add MCQ</button>
-          <span style="flex:1"></span>
-          <select id="qLevelFilter" style="min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
-            <option value="">All levels (${questions.length})</option>
-            <option value="L1">L1 (${lc.L1})</option>
-            <option value="L2">L2 (${lc.L2})</option>
-            <option value="L3">L3 (${lc.L3})</option>
+          <button class="btn btn-primary" id="addQ">+ Add MCQ</button>
+          <select id="qFilter" style="min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+            <option value="">All (${questions.length})</option>
+            <option value="L1">L1 (${questions.filter(q => q.level === "L1").length})</option>
+            <option value="L2">L2 (${questions.filter(q => q.level === "L2").length})</option>
+            <option value="L3">L3 (${questions.filter(q => q.level === "L3").length})</option>
           </select>
-          <input type="file" id="qImportFile" accept=".json" style="display:none">
-          <button class="btn" id="qImportBtn">📥 Import MCQ JSON</button>
-          <button class="btn" id="qExportBtn">📤 Export MCQ JSON</button>
+          <span style="flex:1"></span>
+          <button class="btn" id="impQ">📥 Import MCQs</button>
+          <button class="btn" id="expQ">📤 Export MCQs</button>
         </div>
         <div id="qList"></div>
       `;
-      const renderQList = (filterLevel = "") => {
-        const filtered = filterLevel ? questions.filter(q => q.level === filterLevel) : questions;
+      const renderList = (filter = "") => {
+        const filtered = filter ? questions.filter(q => q.level === filter) : questions;
         $("#qList").innerHTML = filtered.length === 0
-          ? emptyState("No questions", "Add your first MCQ.", "")
+          ? emptyState("No questions", "Add your first.")
           : `<div class="stack">${filtered.map(q => `<div class="card">
               <div class="row-between">
-                <div style="flex:1">
-                  <strong>${escapeHtml((q.questionText || "").slice(0, 120))}${(q.questionText || "").length > 120 ? "…" : ""}</strong>
-                  <div class="list-item-meta mt-8">
-                    <span class="badge ${escapeHtml(q.level || "L1")}">${levelLabel(q.level)}</span>
-                    ${statusBadge(q.status)}
-                    <span>${(q.options || []).length} options</span>
-                  </div>
+                <div style="flex:1"><strong>${escapeHtml((q.questionText || "").slice(0, 100))}</strong>
+                  <div class="list-item-meta mt-8"><span class="badge ${q.level || "L1"}">${levelLabel(q.level)}</span>${statusBadge(q.status)}</div>
                 </div>
                 <div class="row">
-                  <button class="btn btn-small" data-preview-q="${escapeHtml(q.id)}">Preview</button>
-                  <button class="btn btn-small" data-edit-q="${escapeHtml(q.id)}">Edit</button>
-                  <button class="btn btn-small btn-danger" data-del-q="${escapeHtml(q.id)}">Delete</button>
+                  <button class="btn btn-small" data-preview="${escapeHtml(q.id)}">Preview</button>
+                  <button class="btn btn-small" data-edit="${escapeHtml(q.id)}">Edit</button>
+                  <button class="btn btn-small btn-danger" data-del="${escapeHtml(q.id)}">Delete</button>
                 </div>
               </div>
             </div>`).join("")}</div>`;
-        $$("[data-edit-q]").forEach(b => b.addEventListener("click", () => openQuestionForm(chapterId, b.dataset.editQ, chapter.subjectId || "")));
-        $$("[data-preview-q]").forEach(b => b.addEventListener("click", () => previewQuestion(b.dataset.previewQ)));
-        $$("[data-del-q]").forEach(b => b.addEventListener("click", async () => {
-          if (!(await confirmDialog("Delete this MCQ?", { danger: true, confirmText: "Delete" }))) return;
-          try { await deleteDoc(doc(db, "questions", b.dataset.delQ)); toast("Deleted.", "success"); router(); }
+        $$("[data-edit]").forEach(b => b.addEventListener("click", () => openQuestionForm(chapterId, b.dataset.edit, chapter.subjectId || "")));
+        $$("[data-preview]").forEach(b => b.addEventListener("click", async () => {
+          const s = await getDoc(doc(db, "questions", b.dataset.preview));
+          if (!s.exists()) return;
+          const q = s.data();
+          openModal(`<div class="modal-head"><h2>Preview</h2><button class="modal-close" data-modal-close>✕</button></div>
+            <div class="question-stem">${escapeHtml(q.questionText || "")}</div>
+            <div class="option-list">${(q.options || []).map((o, i) => {
+              const isCorrect = (o.id || String.fromCharCode(97 + i)) === q.correctOptionId;
+              return `<div class="option-btn ${isCorrect ? "correct" : ""}" style="cursor:default"><span class="option-key">${String.fromCharCode(65 + i)}</span><span>${escapeHtml(o.text || "")} ${isCorrect ? "(correct)" : ""}</span></div>`;
+            }).join("")}</div>`, true);
+        }));
+        $$("[data-del]").forEach(b => b.addEventListener("click", async () => {
+          if (!(await confirmDialog("Delete?", { danger: true, confirmText: "Delete" }))) return;
+          try { await deleteDoc(doc(db, "questions", b.dataset.del)); MEM.clear(); router(); }
           catch (err) { toast(friendlyError(err, "deleting"), "error"); }
         }));
       };
-      renderQList();
-      $("#qLevelFilter").onchange = e => renderQList(e.target.value);
-      $("#addQBtn").onclick = () => openQuestionForm(chapterId, null, chapter.subjectId || "");
-      $("#qImportBtn").onclick = () => $("#qImportFile").click();
-      $("#qImportFile").onchange = async e => {
-        const file = e.target.files[0]; if (!file) return;
-        try {
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-          const items = Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
-          if (!items.length) return toast("No questions found.", "error");
-          const errors = [];
-          items.forEach((q, i) => {
-            if (!q.questionText) errors.push(`Row ${i + 1}: missing questionText`);
-            if (!Array.isArray(q.options) || q.options.length < 2) errors.push(`Row ${i + 1}: needs ≥2 options`);
-            if (q.options && !q.options.some(o => o.id === q.correctOptionId)) errors.push(`Row ${i + 1}: correctOptionId invalid`);
-          });
-          const previewHtml = `<div class="card" style="box-shadow:none">
-            <h3>Preview: ${items.length} MCQ(s)</h3>
-            ${errors.length ? `<div style="padding:12px;background:#fee2e2;color:#991b1b;border-radius:12px"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
-            <p class="small muted">They will be linked to chapter: <strong>${escapeHtml(chapter.title || "")}</strong></p>
-            <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="confirmQImport" ${errors.length ? "disabled" : ""}>Import ${items.length} MCQ(s)</button></div>
-          </div>`;
-          openModal(`<div class="modal-head"><h2>Import MCQs</h2><button class="modal-close" data-modal-close>✕</button></div>${previewHtml}`, true);
-          $("#confirmQImport")?.addEventListener("click", async () => {
-            const btn = $("#confirmQImport"); btn.disabled = true; btn.textContent = "Importing…";
-            try {
-              for (const q of items) {
-                const ref = q.id ? doc(db, "questions", q.id) : doc(collection(db, "questions"));
-                await setDoc(ref, {
-                  questionText: q.questionText, options: q.options,
-                  correctOptionId: q.correctOptionId, explanation: q.explanation || "",
-                  level: q.level || "L1", importance: q.importance || "normal",
-                  chapterId, subjectId: chapter.subjectId || "",
-                  order: Number(q.order || 0), status: q.status || "draft",
-                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-                }, { merge: true });
-              }
-              toast(`Imported ${items.length} MCQ(s).`, "success");
-              closeModal();
-              router();
-            } catch (err) { toast(friendlyError(err, "importing MCQs"), "error"); btn.disabled = false; btn.textContent = "Import"; }
-          });
-        } catch (err) { toast(`Invalid JSON: ${err.message}`, "error"); }
+      renderList();
+      $("#qFilter").onchange = e => renderList(e.target.value);
+      $("#addQ").onclick = () => openQuestionForm(chapterId, null, chapter.subjectId || "");
+      $("#impQ").onclick = () => {
+        const input = document.createElement("input");
+        input.type = "file"; input.accept = ".json";
+        input.onchange = async e => {
+          const file = e.target.files[0]; if (!file) return;
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const items = Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
+            const errors = [];
+            items.forEach((q, i) => {
+              if (!q.questionText) errors.push(`Row ${i + 1}: no questionText`);
+              if (!Array.isArray(q.options) || q.options.length < 2) errors.push(`Row ${i + 1}: needs ≥2 options`);
+              if (q.options && !q.options.some(o => o.id === q.correctOptionId)) errors.push(`Row ${i + 1}: invalid correctOptionId`);
+            });
+            if (errors.length) return toast(`${errors.length} error(s): ${errors[0]}`, "error", 6000);
+            if (!(await confirmDialog(`Import ${items.length} MCQs?`, { confirmText: "Import" }))) return;
+            for (const q of items) {
+              const ref = q.id ? doc(db, "questions", q.id) : doc(collection(db, "questions"));
+              await setDoc(ref, { questionText: q.questionText, options: q.options, correctOptionId: q.correctOptionId, explanation: q.explanation || "", level: q.level || "L1", importance: q.importance || "normal", chapterId, subjectId: chapter.subjectId || "", order: Number(q.order || 0), status: q.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+            }
+            MEM.clear(); toast(`Imported ${items.length}.`, "success"); router();
+          } catch (err) { toast(friendlyError(err, "importing"), "error"); }
+        };
+        input.click();
       };
-      $("#qExportBtn").onclick = () => {
-        const data = questions.map(q => ({
-          questionText: q.questionText, options: q.options, correctOptionId: q.correctOptionId,
-          explanation: q.explanation || "", level: q.level, importance: q.importance || "normal",
-          order: q.order || 0, status: q.status
-        }));
+      $("#expQ").onclick = () => {
+        const data = questions.map(q => ({ questionText: q.questionText, options: q.options, correctOptionId: q.correctOptionId, explanation: q.explanation || "", level: q.level, importance: q.importance || "normal", order: q.order || 0, status: q.status }));
         downloadFile(`mcqs-${chapterId}.json`, JSON.stringify({ questions: data }, null, 2), "application/json");
       };
     }
@@ -1619,30 +1618,24 @@ function openMaterialForm(chapterId, id, subjectId) {
     let ex = {};
     if (id) { const s = await getDoc(doc(db, "materials", id)); if (s.exists()) ex = s.data(); }
     S.editResources = Array.isArray(ex.resources) ? JSON.parse(JSON.stringify(ex.resources)) : [];
-    renderResourcesEditor();
+    renderResEditor();
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} Material</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
-        <div><label>Title <span class="required">*</span></label><input id="matTitle" value="${escapeHtml(ex.title || "")}"></div>
-        <div><label>Level</label><select id="matLevel">
-          <option value="L1" ${ex.level === "L1" ? "selected" : ""}>L1 · Basic</option>
-          <option value="L2" ${ex.level === "L2" ? "selected" : ""}>L2 · Medium</option>
-          <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3 · Advanced</option>
-        </select></div>
-        <div><label>Importance</label><select id="matImp">
-          <option value="normal" ${ex.importance === "normal" ? "selected" : ""}>Normal</option>
-          <option value="important" ${ex.importance === "important" ? "selected" : ""}>Important</option>
-          <option value="veryImportant" ${ex.importance === "veryImportant" ? "selected" : ""}>Very important</option>
+        <div><label>Title <span class="required">*</span></label><input id="mTitle" value="${escapeHtml(ex.title || "")}"></div>
+        <div><label>Level</label><select id="mLevel">
+          <option value="L1" ${ex.level === "L1" ? "selected" : ""}>L1</option>
+          <option value="L2" ${ex.level === "L2" ? "selected" : ""}>L2</option>
+          <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3</option>
         </select></div>
         <div><label>HTML Content <span class="required">*</span></label>
-          <textarea id="matHtml" rows="12" placeholder="<h2>Heading</h2><p>Text</p><ul><li>Point</li></ul><table>...</table><mark>highlight</mark>">${escapeHtml(ex.html || ex.content || "")}</textarea>
-          <p class="tiny muted">Supports: h1-h6, p, strong, em, ul/ol/li, table, img, a, blockquote, mark, code</p>
+          <textarea id="mHtml" rows="12" placeholder="<h2>Heading</h2><p>Text</p><ul><li>Point</li></ul><table>...</table>">${escapeHtml(ex.html || "")}</textarea>
         </div>
-        <div><label>External Resources (YouTube / PDF / Website)</label>
-          <div id="resEditor"></div>
-          <button class="btn btn-small mt-8" id="addResBtn" type="button">+ Add Resource</button>
+        <div><label>Resources (YouTube / PDF / Website)</label>
+          <div id="resBox"></div>
+          <button class="btn btn-small mt-8" id="addRes" type="button">+ Add Resource</button>
         </div>
-        <div><label>Status</label><select id="matStatus">
+        <div><label>Status</label><select id="mStatus">
           <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
           <option value="published" ${ex.status === "published" ? "selected" : ""}>Published</option>
           <option value="archived" ${ex.status === "archived" ? "selected" : ""}>Archived</option>
@@ -1650,95 +1643,61 @@ function openMaterialForm(chapterId, id, subjectId) {
       </div>
       <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveMat">Save</button></div>
     `, true);
-
-    function renderResourcesEditor() {
-      const box = $("#resEditor"); if (!box) return;
+    function renderResEditor() {
+      const box = $("#resBox"); if (!box) return;
       box.innerHTML = S.editResources.map((r, i) => `
         <div class="editor-option">
-          <div class="mini-row"><input type="text" data-res-title="${i}" value="${escapeHtml(r.title || "")}" placeholder="Title" style="flex:1"></div>
+          <div class="mini-row"><input type="text" data-rt="${i}" value="${escapeHtml(r.title || "")}" placeholder="Title" style="flex:1"></div>
           <div class="mini-row mt-8">
-            <input type="url" data-res-url="${i}" value="${escapeHtml(r.url || "")}" placeholder="https://..." style="flex:1">
-            <select data-res-type="${i}">
+            <input type="url" data-ru="${i}" value="${escapeHtml(r.url || "")}" placeholder="https://..." style="flex:1">
+            <select data-rty="${i}">
               <option value="youtube" ${r.type === "youtube" ? "selected" : ""}>YouTube</option>
               <option value="pdf" ${r.type === "pdf" ? "selected" : ""}>PDF</option>
               <option value="website" ${r.type === "website" ? "selected" : ""}>Website</option>
             </select>
-            <button class="btn btn-small btn-danger" type="button" data-res-remove="${i}">✕</button>
+            <button class="btn btn-small btn-danger" type="button" data-rr="${i}">✕</button>
           </div>
         </div>`).join("");
-      $$("[data-res-title]").forEach(inp => inp.addEventListener("input", () => { S.editResources[+inp.dataset.resTitle].title = inp.value; }));
-      $$("[data-res-url]").forEach(inp => inp.addEventListener("input", () => { S.editResources[+inp.dataset.resUrl].url = inp.value; }));
-      $$("[data-res-type]").forEach(s => s.addEventListener("change", () => { S.editResources[+s.dataset.resType].type = s.value; }));
-      $$("[data-res-remove]").forEach(b => b.addEventListener("click", () => { S.editResources.splice(+b.dataset.resRemove, 1); renderResourcesEditor(); }));
+      $$("[data-rt]").forEach(i => i.addEventListener("input", () => { S.editResources[+i.dataset.rt].title = i.value; }));
+      $$("[data-ru]").forEach(i => i.addEventListener("input", () => { S.editResources[+i.dataset.ru].url = i.value; }));
+      $$("[data-rty]").forEach(s => s.addEventListener("change", () => { S.editResources[+s.dataset.rty].type = s.value; }));
+      $$("[data-rr]").forEach(b => b.addEventListener("click", () => { S.editResources.splice(+b.dataset.rr, 1); renderResEditor(); }));
     }
-    renderResourcesEditor();
-    $("#addResBtn").onclick = () => { S.editResources.push({ title: "", url: "", type: "youtube" }); renderResourcesEditor(); };
-
+    renderResEditor();
+    $("#addRes").onclick = () => { S.editResources.push({ title: "", url: "", type: "youtube" }); renderResEditor(); };
     $("#saveMat").onclick = async () => {
       const btn = $("#saveMat"); btn.disabled = true; btn.textContent = "Saving…";
       try {
-        const title = $("#matTitle").value.trim();
-        const html = $("#matHtml").value;
-        if (!title) { toast("Title required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        if (!html.trim()) { toast("HTML content required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        const data = {
-          title, html, level: $("#matLevel").value, importance: $("#matImp").value,
-          resources: S.editResources.filter(r => r.url && r.title),
-          chapterId, subjectId, order: 0, status: $("#matStatus").value,
-          updatedAt: serverTimestamp()
-        };
+        const title = $("#mTitle").value.trim();
+        const html = $("#mHtml").value;
+        if (!title || !html.trim()) { toast("Title and HTML required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = { title, html, level: $("#mLevel").value, resources: S.editResources.filter(r => r.url && r.title), chapterId, subjectId, order: 0, status: $("#mStatus").value, updatedAt: serverTimestamp() };
         if (!id) data.createdAt = serverTimestamp();
         const ref = id ? doc(db, "materials", id) : doc(collection(db, "materials"));
         await setDoc(ref, data, { merge: true });
-        toast("Material saved.", "success");
-        closeModal();
-        router();
-      } catch (err) {
-        console.error("Save material error", err);
-        toast(friendlyError(err, "saving material"), "error", 5000);
-        btn.disabled = false; btn.textContent = "Save";
-      }
+        MEM.clear();
+        toast("Saved.", "success"); closeModal(); router();
+      } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; btn.textContent = "Save"; }
     };
   })();
-}
-
-async function previewMaterial(id) {
-  const s = await getDoc(doc(db, "materials", id));
-  if (!s.exists()) return toast("Not found.", "error");
-  const m = s.data();
-  openModal(`
-    <div class="modal-head"><h2>Preview: ${escapeHtml(m.title || "")}</h2><button class="modal-close" data-modal-close>✕</button></div>
-    <div class="reader-content">${sanitizeHtml(m.html || m.content || "")}</div>
-  `, true);
 }
 
 function openQuestionForm(chapterId, id, subjectId) {
   (async () => {
     let ex = {};
     if (id) { const s = await getDoc(doc(db, "questions", id)); if (s.exists()) ex = s.data(); }
-    S.editOptions = Array.isArray(ex.options) && ex.options.length ? JSON.parse(JSON.stringify(ex.options)) : [
-      { id: "a", text: "" }, { id: "b", text: "" }, { id: "c", text: "" }, { id: "d", text: "" }
-    ];
+    S.editOptions = Array.isArray(ex.options) && ex.options.length ? JSON.parse(JSON.stringify(ex.options)) : [{ id: "a", text: "" }, { id: "b", text: "" }, { id: "c", text: "" }, { id: "d", text: "" }];
     S.editCorrectId = ex.correctOptionId || "a";
-
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} MCQ</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
         <div><label>Question <span class="required">*</span></label><textarea id="qText" rows="3">${escapeHtml(ex.questionText || "")}</textarea></div>
-        <div><label>Level / Difficulty</label><select id="qLevel">
+        <div><label>Level</label><select id="qLevel">
           <option value="L1" ${ex.level === "L1" ? "selected" : ""}>L1 · Easy</option>
           <option value="L2" ${ex.level === "L2" ? "selected" : ""}>L2 · Medium</option>
           <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3 · Hard</option>
         </select></div>
-        <div><label>Importance</label><select id="qImp">
-          <option value="normal" ${ex.importance === "normal" ? "selected" : ""}>Normal</option>
-          <option value="important" ${ex.importance === "important" ? "selected" : ""}>Important</option>
-          <option value="veryImportant" ${ex.importance === "veryImportant" ? "selected" : ""}>Very important</option>
-        </select></div>
-        <div><label>Options <span class="required">*</span></label>
-          <div id="optEditor"></div>
-          <button class="btn btn-small mt-8" id="addOptBtn" type="button">+ Add Option</button>
-        </div>
+        <div><label>Options <span class="required">*</span></label><div id="optBox"></div><button class="btn btn-small mt-8" id="addOpt" type="button">+ Add</button></div>
         <div><label>Explanation</label><textarea id="qExpl" rows="3">${escapeHtml(ex.explanation || "")}</textarea></div>
         <div><label>Status</label><select id="qStatus">
           <option value="draft" ${ex.status === "draft" ? "selected" : ""}>Draft</option>
@@ -1748,262 +1707,273 @@ function openQuestionForm(chapterId, id, subjectId) {
       </div>
       <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveQ">Save</button></div>
     `, true);
-
     function renderOpts() {
-      const box = $("#optEditor"); if (!box) return;
+      const box = $("#optBox"); if (!box) return;
       box.innerHTML = S.editOptions.map((o, i) => `
         <div class="editor-option">
           <div class="mini-row">
-            <input type="text" data-opt-text="${i}" value="${escapeHtml(o.text || "")}" placeholder="Option ${String.fromCharCode(65 + i)}" style="flex:1">
-            <label class="small"><input type="radio" name="correctOpt" value="${escapeHtml(o.id)}" ${S.editCorrectId === o.id ? "checked" : ""}> Correct</label>
-            <button class="btn btn-small btn-danger" type="button" data-opt-remove="${i}" ${S.editOptions.length <= 2 ? "disabled" : ""}>✕</button>
+            <input type="text" data-ot="${i}" value="${escapeHtml(o.text || "")}" placeholder="Option ${String.fromCharCode(65 + i)}" style="flex:1">
+            <label class="small"><input type="radio" name="corr" value="${escapeHtml(o.id)}" ${S.editCorrectId === o.id ? "checked" : ""}> Correct</label>
+            <button class="btn btn-small btn-danger" type="button" data-or="${i}" ${S.editOptions.length <= 2 ? "disabled" : ""}>✕</button>
           </div>
         </div>`).join("");
-      $$("[data-opt-text]").forEach(inp => inp.addEventListener("input", () => { S.editOptions[+inp.dataset.optText].text = inp.value; }));
-      $$('input[name="correctOpt"]').forEach(r => r.addEventListener("change", () => { S.editCorrectId = r.value; }));
-      $$("[data-opt-remove]").forEach(b => b.addEventListener("click", () => {
-        S.editOptions.splice(+b.dataset.optRemove, 1);
+      $$("[data-ot]").forEach(i => i.addEventListener("input", () => { S.editOptions[+i.dataset.ot].text = i.value; }));
+      $$('input[name="corr"]').forEach(r => r.addEventListener("change", () => { S.editCorrectId = r.value; }));
+      $$("[data-or]").forEach(b => b.addEventListener("click", () => {
+        S.editOptions.splice(+b.dataset.or, 1);
         if (!S.editOptions.some(o => o.id === S.editCorrectId)) S.editCorrectId = S.editOptions[0]?.id || "a";
         renderOpts();
       }));
     }
     renderOpts();
-    $("#addOptBtn").onclick = () => {
-      if (S.editOptions.length >= 6) return toast("Max 6 options.", "error");
+    $("#addOpt").onclick = () => {
+      if (S.editOptions.length >= 6) return toast("Max 6", "error");
       S.editOptions.push({ id: String.fromCharCode(97 + S.editOptions.length), text: "" });
       renderOpts();
     };
-
     $("#saveQ").onclick = async () => {
       const btn = $("#saveQ"); btn.disabled = true; btn.textContent = "Saving…";
       try {
         const qText = $("#qText").value.trim();
-        if (!qText) { toast("Question required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
         const valid = S.editOptions.filter(o => o.text.trim());
-        if (valid.length < 2) { toast("Need ≥2 options with text.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        if (!valid.some(o => o.id === S.editCorrectId)) { toast("Mark the correct option.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        const data = {
-          questionText: qText, options: valid, correctOptionId: S.editCorrectId,
-          explanation: $("#qExpl").value.trim(), level: $("#qLevel").value,
-          importance: $("#qImp").value, chapterId, subjectId, order: 0,
-          status: $("#qStatus").value, updatedAt: serverTimestamp()
-        };
+        if (!qText) { toast("Question required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        if (valid.length < 2) { toast("Need ≥2 options.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        if (!valid.some(o => o.id === S.editCorrectId)) { toast("Mark correct option.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
+        const data = { questionText: qText, options: valid, correctOptionId: S.editCorrectId, explanation: $("#qExpl").value.trim(), level: $("#qLevel").value, chapterId, subjectId, order: 0, status: $("#qStatus").value, updatedAt: serverTimestamp() };
         if (!id) data.createdAt = serverTimestamp();
         const ref = id ? doc(db, "questions", id) : doc(collection(db, "questions"));
         await setDoc(ref, data, { merge: true });
-        toast("MCQ saved.", "success");
-        closeModal();
-        router();
-      } catch (err) {
-        console.error("Save MCQ error", err);
-        toast(friendlyError(err, "saving MCQ"), "error", 5000);
-        btn.disabled = false; btn.textContent = "Save";
-      }
+        MEM.clear();
+        toast("Saved.", "success"); closeModal(); router();
+      } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; btn.textContent = "Save"; }
     };
   })();
 }
 
-async function previewQuestion(id) {
-  const s = await getDoc(doc(db, "questions", id));
-  if (!s.exists()) return toast("Not found.", "error");
-  const q = s.data();
-  openModal(`
-    <div class="modal-head"><h2>Preview MCQ</h2><button class="modal-close" data-modal-close>✕</button></div>
-    <div class="question-stem">${escapeHtml(q.questionText || "")}</div>
-    <div class="option-list">${(q.options || []).map((o, i) => {
-      const key = o.id || String.fromCharCode(97 + i);
-      const isCorrect = q.correctOptionId === key;
-      return `<div class="option-btn ${isCorrect ? "correct" : ""}" style="cursor:default">
-        <span class="option-key">${String.fromCharCode(65 + i)}</span>
-        <span>${escapeHtml(o.text || "")} ${isCorrect ? "<strong>(correct)</strong>" : ""}</span>
-      </div>`;
-    }).join("")}</div>
-    ${q.explanation ? `<div class="explanation-box"><h4>Explanation</h4><p>${sanitizeHtml(q.explanation)}</p></div>` : ""}
-  `, true);
-}
+/* ============ ADMIN IMPORT/EXPORT with selection ============ */
+async function renderAdminImport(token) {
+  setPage(spinner("Loading…"));
+  const allSubjects = await loadAllSubjects(true);
+  if (isStale(token)) return;
 
-function renderAdminImport(token) {
+  // Load all chapters for all subjects in parallel (admin-only, OK)
+  const chaptersBySubject = {};
+  await Promise.all(allSubjects.map(async s => {
+    try {
+      const snap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",s.id), limit(200)));
+      chaptersBySubject[s.id] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch { chaptersBySubject[s.id] = []; }
+  }));
+  if (isStale(token)) return;
+
   setPage(`
     <div class="page-head"><div><h1 class="page-title">JSON Import / Export</h1>
-    <p class="page-sub">Bulk load subjects with chapters, materials, and MCQs.</p></div>
+    <p class="page-sub">Bulk load and export content.</p></div>
     <a class="btn" href="#/admin">← Back</a></div>
 
     <div class="card mb-16">
-      <h2 class="card-title">Import full subject JSON</h2>
-      <p class="small muted">Structure: <code>{ "subject": {...}, "chapters": [{..., "materials": [...], "questions": [...]}] }</code></p>
+      <h2 class="card-title">📥 Import</h2>
+      <p class="small muted">Import a full subject JSON with chapters, materials, and MCQs.</p>
       <div class="form-grid">
-        <div><label>JSON file</label><input type="file" id="importFile" accept=".json"></div>
-        <div><label>Mode</label><select id="importMode">
-          <option value="addNew">Add New (skip if ID exists)</option>
+        <div><label>JSON file</label><input type="file" id="impFile" accept=".json"></div>
+        <div><label>Mode</label><select id="impMode">
+          <option value="addNew">Add New (skip existing IDs)</option>
           <option value="addOrUpdate">Add or Update</option>
           <option value="updateById">Update by ID only</option>
         </select></div>
       </div>
       <div class="row mt-16">
-        <button class="btn btn-primary" id="previewImport">Validate &amp; Preview</button>
-        <button class="btn" id="downloadTemplate">Download Template</button>
+        <button class="btn btn-primary" id="doImport">Validate & Import</button>
+        <button class="btn" id="tplBtn">Download Template</button>
       </div>
-      <div id="previewBox" class="mt-16"></div>
+      <div id="impResult" class="mt-16"></div>
     </div>
 
     <div class="card">
-      <h2 class="card-title">Export full subject</h2>
+      <h2 class="card-title">📤 Export</h2>
+      <p class="small muted">Select items to export. Choose what to include.</p>
       <div class="form-grid">
-        <div><label>Subject ID</label><input id="exportSubId" placeholder="Paste subject ID"></div>
+        <div>
+          <label>What to export</label>
+          <select id="expType">
+            <option value="full">Full subject (all content)</option>
+            <option value="chapters">Selected chapters only</option>
+            <option value="mcqs">MCQs only</option>
+            <option value="materials">Materials only</option>
+          </select>
+        </div>
+        <div>
+          <label>Include</label>
+          <div class="checkbox-row"><input type="checkbox" id="incMaterials" checked><label style="margin:0">Materials</label></div>
+          <div class="checkbox-row"><input type="checkbox" id="incQuestions" checked><label style="margin:0">MCQs</label></div>
+        </div>
       </div>
-      <div class="form-actions"><button class="btn btn-primary" id="exportBtn">Export JSON</button></div>
+
+      <div class="mt-16">
+        <div class="row-between mb-8">
+          <label style="font-weight:700">Select subjects / chapters</label>
+          <div class="row">
+            <button class="btn btn-small" id="selAll">Select all</button>
+            <button class="btn btn-small" id="selNone">Clear</button>
+          </div>
+        </div>
+        <div class="export-list" id="exportList">
+          ${allSubjects.map(s => `
+            <div>
+              <label class="export-item" style="font-weight:700">
+                <input type="checkbox" class="sub-check" data-sid="${escapeHtml(s.id)}" checked>
+                <span class="export-item-label">${escapeHtml(s.title || "")}</span>
+                <span class="export-item-sub">${(chaptersBySubject[s.id] || []).length} ch</span>
+              </label>
+              <div style="padding-left:32px">
+                ${(chaptersBySubject[s.id] || []).map(c => `
+                  <label class="export-item">
+                    <input type="checkbox" class="ch-check" data-cid="${escapeHtml(c.id)}" data-sid="${escapeHtml(s.id)}" checked>
+                    <span class="export-item-label">${c.chapterNumber ? `Ch ${c.chapterNumber}: ` : ""}${escapeHtml(c.title || "")}</span>
+                  </label>
+                `).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="form-actions"><button class="btn btn-primary" id="doExport">📤 Export selected</button></div>
     </div>
   `);
 
-  $("#downloadTemplate").onclick = () => {
+  // Subject checkbox toggles child chapters
+  $$(".sub-check").forEach(cb => cb.addEventListener("change", () => {
+    const sid = cb.dataset.sid;
+    $$(`.ch-check[data-sid="${sid}"]`).forEach(ch => ch.checked = cb.checked);
+  }));
+
+  $("#selAll").onclick = () => { $$(".sub-check, .ch-check").forEach(c => c.checked = true); };
+  $("#selNone").onclick = () => { $$(".sub-check, .ch-check").forEach(c => c.checked = false); };
+
+  $("#tplBtn").onclick = () => {
     const tpl = {
-      subject: { title: "Example Subject", description: "Description", status: "draft", order: 0 },
+      subject: { title: "Example Subject", description: "", status: "draft" },
       chapters: [{
-        title: "Chapter 1", chapterNumber: 1, description: "Description", status: "draft",
-        materials: [{
-          title: "Introduction", level: "L1", importance: "important", status: "draft",
-          html: "<h2>Heading</h2><p>Paragraph with <strong>bold</strong> and <mark>highlighted</mark> text.</p><ul><li>Point 1</li><li>Point 2</li></ul>",
-          resources: [{ title: "Video", url: "https://www.youtube.com/watch?v=xxx", type: "youtube" }]
-        }],
-        questions: [{
-          questionText: "Sample question?",
-          options: [{ id: "a", text: "Option A" }, { id: "b", text: "Option B" }, { id: "c", text: "Option C" }, { id: "d", text: "Option D" }],
-          correctOptionId: "a", level: "L1", explanation: "Explanation", status: "draft"
-        }]
+        title: "Chapter 1", chapterNumber: 1, description: "", status: "draft",
+        materials: [{ title: "Intro", level: "L1", html: "<h2>Heading</h2><p>Text</p>", status: "draft", resources: [{ title: "Video", url: "https://youtube.com/watch?v=xxx", type: "youtube" }] }],
+        questions: [{ questionText: "Sample?", options: [{ id: "a", text: "A" }, { id: "b", text: "B" }], correctOptionId: "a", level: "L1", status: "draft" }]
       }]
     };
-    downloadFile("sajilo-template.json", JSON.stringify(tpl, null, 2), "application/json");
+    downloadFile("template.json", JSON.stringify(tpl, null, 2), "application/json");
   };
 
-  $("#previewImport").onclick = async () => {
-    const file = $("#importFile").files[0];
-    if (!file) return toast("Choose a JSON file.", "error");
+  $("#doImport").onclick = async () => {
+    const file = $("#impFile").files[0];
+    if (!file) return toast("Choose a file.", "error");
+    const btn = $("#doImport"); btn.disabled = true; btn.textContent = "Importing…";
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
       const subjects = Array.isArray(parsed) ? parsed : (parsed.subject ? [parsed] : (parsed.subjects || []));
-      if (!subjects.length) return toast("No subjects found.", "error");
+      if (!subjects.length) { toast("No subjects.", "error"); btn.disabled = false; btn.textContent = "Validate & Import"; return; }
 
-      let totalChapters = 0, totalMaterials = 0, totalQuestions = 0;
-      const errors = [];
-      subjects.forEach((sb, si) => {
-        const sub = sb.subject || sb;
-        if (!sub.title) errors.push(`Subject ${si + 1}: missing title`);
-        (sb.chapters || []).forEach((ch, ci) => {
-          totalChapters++;
-          if (!ch.title) errors.push(`Subject ${si + 1}, Chapter ${ci + 1}: missing title`);
-          totalMaterials += (ch.materials || []).length;
-          (ch.questions || []).forEach((q, qi) => {
-            totalQuestions++;
-            if (!q.questionText) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: missing questionText`);
-            if (!Array.isArray(q.options) || q.options.length < 2) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: needs ≥2 options`);
-            if (q.options && !q.options.some(o => o.id === q.correctOptionId)) errors.push(`Subject ${si + 1}, Ch ${ci + 1}, Q ${qi + 1}: correctOptionId invalid`);
-          });
-        });
-      });
+      const mode = $("#impMode").value;
+      let sub = 0, ch = 0, mat = 0, q = 0, skip = 0;
 
-      $("#previewBox").innerHTML = `<div class="card" style="box-shadow:none">
-        <div class="grid grid-4 mb-16">
-          <div class="stat-card"><div class="stat-value">${subjects.length}</div><div class="stat-label">Subjects</div></div>
-          <div class="stat-card"><div class="stat-value">${totalChapters}</div><div class="stat-label">Chapters</div></div>
-          <div class="stat-card"><div class="stat-value">${totalMaterials}</div><div class="stat-label">Materials</div></div>
-          <div class="stat-card"><div class="stat-value">${totalQuestions}</div><div class="stat-label">MCQs</div></div>
-        </div>
-        ${errors.length ? `<div style="padding:12px;background:#fee2e2;color:#991b1b;border-radius:12px"><strong>${errors.length} error(s):</strong><ul>${errors.slice(0, 15).map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul></div>` : '<p class="badge green">✓ Validation passed</p>'}
-        <div class="form-actions"><button class="btn btn-primary" id="confirmImport" ${errors.length ? "disabled" : ""}>Confirm Import</button></div>
-      </div>`;
+      for (const sBlock of subjects) {
+        const sd = sBlock.subject || sBlock;
+        const sRef = sd.id ? doc(db, "subjects", sd.id) : doc(collection(db, "subjects"));
+        const ex = await getDoc(sRef);
+        if (ex.exists() && mode === "addNew") { skip++; continue; }
+        await setDoc(sRef, { title: sd.title || "Untitled", description: sd.description || "", status: sd.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+        sub++;
+        const sid = sRef.id;
 
-      $("#confirmImport")?.addEventListener("click", async () => {
-        const btn = $("#confirmImport"); btn.disabled = true; btn.textContent = "Importing…";
-        const mode = $("#importMode").value;
-        try {
-          let subCount = 0, chCount = 0, matCount = 0, qCount = 0, skipped = 0;
-          for (const sBlock of subjects) {
-            const subData = sBlock.subject || sBlock;
-            const subRef = subData.id ? doc(db, "subjects", subData.id) : doc(collection(db, "subjects"));
-            const existing = await getDoc(subRef);
-            if (existing.exists() && mode === "addNew") { skipped++; continue; }
-            await setDoc(subRef, {
-              title: subData.title || "Untitled", description: subData.description || "",
-              status: subData.status || "draft", order: Number(subData.order || 0),
-              createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-            }, { merge: true });
-            subCount++;
-            const subjectId = subRef.id;
+        for (const cBlock of (sBlock.chapters || [])) {
+          const cRef = cBlock.id ? doc(db, "chapters", cBlock.id) : doc(collection(db, "chapters"));
+          const cex = await getDoc(cRef);
+          if (cex.exists() && mode === "addNew") { skip++; continue; }
+          await setDoc(cRef, { title: cBlock.title || "Untitled", chapterNumber: Number(cBlock.chapterNumber || 1), description: cBlock.description || "", subjectId: sid, status: cBlock.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+          ch++;
+          const cid = cRef.id;
 
-            for (const chData of (sBlock.chapters || [])) {
-              const chRef = chData.id ? doc(db, "chapters", chData.id) : doc(collection(db, "chapters"));
-              const chExisting = await getDoc(chRef);
-              if (chExisting.exists() && mode === "addNew") { skipped++; continue; }
-              await setDoc(chRef, {
-                title: chData.title || "Untitled", chapterNumber: Number(chData.chapterNumber || 1),
-                description: chData.description || "", subjectId, status: chData.status || "draft",
-                order: Number(chData.order || 0), createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-              }, { merge: true });
-              chCount++;
-              const chapterId = chRef.id;
-
-              for (const mData of (chData.materials || [])) {
-                const mRef = mData.id ? doc(db, "materials", mData.id) : doc(collection(db, "materials"));
-                await setDoc(mRef, {
-                  title: mData.title || "Untitled", html: mData.html || mData.content || "",
-                  level: mData.level || "L1", importance: mData.importance || "normal",
-                  resources: mData.resources || [], chapterId, subjectId,
-                  order: Number(mData.order || 0), status: mData.status || "draft",
-                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-                }, { merge: true });
-                matCount++;
-              }
-
-              for (const qData of (chData.questions || [])) {
-                const qRef = qData.id ? doc(db, "questions", qData.id) : doc(collection(db, "questions"));
-                await setDoc(qRef, {
-                  questionText: qData.questionText || "", options: qData.options || [],
-                  correctOptionId: qData.correctOptionId || "",
-                  explanation: qData.explanation || "", level: qData.level || "L1",
-                  importance: qData.importance || "normal", chapterId, subjectId,
-                  order: Number(qData.order || 0), status: qData.status || "draft",
-                  createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-                }, { merge: true });
-                qCount++;
-              }
-            }
+          for (const m of (cBlock.materials || [])) {
+            const mRef = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
+            await setDoc(mRef, { title: m.title || "", html: m.html || m.content || "", level: m.level || "L1", importance: m.importance || "normal", resources: m.resources || [], chapterId: cid, subjectId: sid, order: Number(m.order || 0), status: m.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+            mat++;
           }
-          toast(`Imported: ${subCount} subjects, ${chCount} chapters, ${matCount} materials, ${qCount} MCQs. Skipped: ${skipped}.`, "success", 6000);
-          $("#previewBox").innerHTML = `<div class="card" style="box-shadow:none"><p class="badge green">✓ Import complete</p></div>`;
-        } catch (err) {
-          console.error("Import error", err);
-          toast(friendlyError(err, "importing"), "error", 5000);
-          btn.disabled = false; btn.textContent = "Confirm Import";
+
+          for (const qq of (cBlock.questions || [])) {
+            const qRef = qq.id ? doc(db, "questions", qq.id) : doc(collection(db, "questions"));
+            await setDoc(qRef, { questionText: qq.questionText || "", options: qq.options || [], correctOptionId: qq.correctOptionId || "", explanation: qq.explanation || "", level: qq.level || "L1", importance: qq.importance || "normal", chapterId: cid, subjectId: sid, order: Number(qq.order || 0), status: qq.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+            q++;
+          }
         }
-      });
+      }
+      MEM.clear();
+      toast(`Imported: ${sub} sub, ${ch} ch, ${mat} mat, ${q} MCQ. Skipped: ${skip}.`, "success", 6000);
+      $("#impResult").innerHTML = `<div class="card" style="box-shadow:none"><p class="badge green">✓ Import complete</p><p class="small mt-8">${sub} subjects, ${ch} chapters, ${mat} materials, ${q} MCQs</p></div>`;
     } catch (err) {
-      toast(`Invalid JSON: ${err.message}`, "error");
-    }
+      toast(friendlyError(err, "importing"), "error", 5000);
+    } finally { btn.disabled = false; btn.textContent = "Validate & Import"; }
   };
 
-  $("#exportBtn").onclick = async () => {
-    const id = $("#exportSubId").value.trim();
-    if (!id) return toast("Enter subject ID.", "error");
+  $("#doExport").onclick = async () => {
+    const btn = $("#doExport"); btn.disabled = true; btn.textContent = "Preparing…";
     try {
-      const subSnap = await getDoc(doc(db, "subjects", id));
-      if (!subSnap.exists()) return toast("Subject not found.", "error");
-      const subject = { id: subSnap.id, ...subSnap.data() };
-      const chSnap = await getDocs(query(collection(db, "chapters"), where("subjectId","==",id), limit(500)));
-      const chapters = [];
-      for (const cd of chSnap.docs) {
-        const chapter = { id: cd.id, ...cd.data() };
-        const [mSnap, qSnap] = await Promise.all([
-          getDocs(query(collection(db, "materials"), where("chapterId","==",cd.id), limit(500))),
-          getDocs(query(collection(db, "questions"), where("chapterId","==",cd.id), limit(500)))
-        ]);
-        chapter.materials = mSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        chapter.questions = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        chapters.push(chapter);
+      const expType = $("#expType").value;
+      const incMaterials = $("#incMaterials").checked;
+      const incQuestions = $("#incQuestions").checked;
+      const selectedSubjectIds = new Set($$(".sub-check:checked").map(c => c.dataset.sid));
+      const selectedChapterIds = new Set($$(".ch-check:checked").map(c => c.dataset.cid));
+
+      if (selectedSubjectIds.size === 0 && selectedChapterIds.size === 0) {
+        toast("Select at least one subject or chapter.", "error");
+        btn.disabled = false; btn.textContent = "📤 Export selected";
+        return;
       }
-      downloadFile(`subject-${id}.json`, JSON.stringify({ subject, chapters }, null, 2), "application/json");
+
+      const result = { subjects: [], exportedAt: new Date().toISOString() };
+
+      if (expType === "full" || expType === "chapters") {
+        for (const s of allSubjects) {
+          if (!selectedSubjectIds.has(s.id)) continue;
+          const subjectExport = { id: s.id, title: s.title, description: s.description, status: s.status, chapters: [] };
+          for (const c of (chaptersBySubject[s.id] || [])) {
+            if (expType === "chapters" && !selectedChapterIds.has(c.id)) continue;
+            const chExport = { id: c.id, title: c.title, chapterNumber: c.chapterNumber, description: c.description, status: c.status, materials: [], questions: [] };
+            if (incMaterials) {
+              const mSnap = await getDocs(query(collection(db, "materials"), where("chapterId","==",c.id), limit(500)));
+              chExport.materials = mSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+            if (incQuestions) {
+              const qSnap = await getDocs(query(collection(db, "questions"), where("chapterId","==",c.id), limit(500)));
+              chExport.questions = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+            subjectExport.chapters.push(chExport);
+          }
+          if (subjectExport.chapters.length > 0) result.subjects.push(subjectExport);
+        }
+      } else if (expType === "mcqs" || expType === "materials") {
+        const questions = []; const materials = [];
+        for (const s of allSubjects) {
+          if (!selectedSubjectIds.has(s.id)) continue;
+          for (const c of (chaptersBySubject[s.id] || [])) {
+            if (!selectedChapterIds.has(c.id)) continue;
+            if (expType === "mcqs") {
+              const qSnap = await getDocs(query(collection(db, "questions"), where("chapterId","==",c.id), limit(500)));
+              questions.push(...qSnap.docs.map(d => ({ id: d.id, chapterId: c.id, chapterTitle: c.title, ...d.data() })));
+            } else {
+              const mSnap = await getDocs(query(collection(db, "materials"), where("chapterId","==",c.id), limit(500)));
+              materials.push(...mSnap.docs.map(d => ({ id: d.id, chapterId: c.id, chapterTitle: c.title, ...d.data() })));
+            }
+          }
+        }
+        result.questions = questions;
+        result.materials = materials;
+      }
+
+      downloadFile(`export-${Date.now()}.json`, JSON.stringify(result, null, 2), "application/json");
       toast("Exported.", "success");
-    } catch (err) { toast(friendlyError(err, "exporting"), "error"); }
+    } catch (err) {
+      toast(friendlyError(err, "exporting"), "error");
+    } finally { btn.disabled = false; btn.textContent = "📤 Export selected"; }
   };
 }
 
@@ -2015,7 +1985,7 @@ function boot() {
   bindShell();
 
   if (firebaseInitError) {
-    if (els.bootScreen) els.bootScreen.innerHTML = `<div class="boot-logo">Sajilo<span>GK</span></div><p style="color:#fee2e2">Firebase initialization failed.</p><button class="btn" onclick="location.reload()">Reload</button>`;
+    if (els.bootScreen) els.bootScreen.innerHTML = `<div class="boot-logo">Sajilo<span>GK</span></div><p style="color:#fee2e2">Firebase failed.</p><button class="btn" onclick="location.reload()">Reload</button>`;
     return;
   }
 
@@ -2026,6 +1996,7 @@ function boot() {
     if (!user) {
       S.profile = null; S.profileLoaded = false; S.profilePromise = null;
       S.isOwner = false; S.isAdmin = false; S.selectedSubjects = []; S.exams = [];
+      MEM.clear();
       showAuth(); setAuthTab("login");
       return;
     }
