@@ -69,10 +69,17 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const escapeHtml = v => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 
+/* FIXED: auto-prepend https:// when protocol is missing */
 function safeUrl(raw) {
-  try { const u = new URL(String(raw || "").trim()); return ["http:","https:"].includes(u.protocol) ? u.href : ""; }
-  catch { return ""; }
+  try {
+    let s = String(raw || "").trim();
+    if (!s) return "";
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = "https://" + s;
+    const u = new URL(s);
+    return ["http:", "https:"].includes(u.protocol) ? u.href : "";
+  } catch { return ""; }
 }
+
 function youtubeId(raw) {
   const url = safeUrl(raw);
   if (!url) return "";
@@ -412,7 +419,7 @@ function bindShell() {
   window.addEventListener("hashchange", router);
 }
 
-/* ============ DATA LAYER (cached) ============ */
+/* ============ DATA LAYER ============ */
 async function loadAllSubjects(force = false) {
   if (!force) { const c = MEM.get("subjects"); if (c) return c; }
   try {
@@ -851,7 +858,7 @@ async function renderSubjectDetail(id, token) {
   `);
 }
 
-/* ============ CHAPTER DETAIL (inline YouTube + PDFs + bottom mark-as-read) ============ */
+/* ============ CHAPTER DETAIL — resource rendering ============ */
 function renderResource(r) {
   const url = safeUrl(r.url);
   if (!url) return "";
@@ -869,7 +876,7 @@ function renderResource(r) {
     </div>`;
   }
 
-  // Non-YouTube (PDF / Website / Other) → "Read More" button
+  // Non-YouTube → Read More button
   let icon = "🔗";
   let displayLabel = r.title || "External Link";
   const isPdf = r.type === "pdf" || /\.pdf(\?|#|$)/i.test(url);
@@ -944,7 +951,7 @@ async function renderChapterDetail(id, token) {
 
     <div class="card mb-16">
       <h2 class="card-title">📖 Study Materials (${materials.length})</h2>
-      <p class="small muted mb-16">Click a video thumbnail to play. PDF links open in a new tab.</p>
+      <p class="small muted mb-16">Click a video thumbnail to play. PDF/Website links open in a new tab.</p>
       ${materialsHtml}
     </div>
 
@@ -969,7 +976,7 @@ async function renderChapterDetail(id, token) {
     </div>
   `);
 
-  // YouTube inline play — robust click handler
+  // YouTube inline play
   $$(".youtube-inline").forEach(el => {
     const activate = () => {
       const vid = el.dataset.vid;
@@ -997,7 +1004,7 @@ async function renderChapterDetail(id, token) {
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } });
   });
 
-  // Mark read
+  // Mark as read
   $$("[data-mark-read]").forEach(btn => btn.addEventListener("click", async () => {
     const mid = btn.dataset.markRead;
     btn.disabled = true;
@@ -1161,7 +1168,6 @@ function renderPracticeResults() {
       ${p.questions.map((q, i) => {
         const sel = p.answers.get(q.id);
         const isCorrect = sel === q.correctOptionId;
-        const isWrong = sel && !isCorrect;
         const options = q.options || [];
         return `<div class="card mb-16" style="box-shadow:none">
           <div class="row-between mb-8">
@@ -1510,7 +1516,7 @@ async function renderAdminChapterDetail(chapterId, token) {
           : `<div class="stack">${materials.map(m => `<div class="card">
               <div class="row-between">
                 <div><strong>${escapeHtml(m.title || "")}</strong>
-                  <div class="list-item-meta mt-8"><span class="badge ${m.level || "L1"}">${levelLabel(m.level)}</span>${statusBadge(m.status)}</div>
+                  <div class="list-item-meta mt-8"><span class="badge ${m.level || "L1"}">${levelLabel(m.level)}</span>${statusBadge(m.status)}<span>${(m.resources || []).length} resource(s)</span></div>
                 </div>
                 <div class="row">
                   <button class="btn btn-small" data-preview="${escapeHtml(m.id)}">Preview</button>
@@ -1643,12 +1649,13 @@ async function renderAdminChapterDetail(chapterId, token) {
   renderTab("materials");
 }
 
+/* ============ MATERIAL FORM (FIXED resource save) ============ */
 function openMaterialForm(chapterId, id, subjectId) {
   (async () => {
     let ex = {};
     if (id) { const s = await getDoc(doc(db, "materials", id)); if (s.exists()) ex = s.data(); }
     S.editResources = Array.isArray(ex.resources) ? JSON.parse(JSON.stringify(ex.resources)) : [];
-    renderResEditor();
+
     openModal(`
       <div class="modal-head"><h2>${id ? "Edit" : "New"} Material</h2><button class="modal-close" data-modal-close>✕</button></div>
       <div class="form-grid">
@@ -1659,9 +1666,10 @@ function openMaterialForm(chapterId, id, subjectId) {
           <option value="L3" ${ex.level === "L3" ? "selected" : ""}>L3</option>
         </select></div>
         <div><label>HTML Content <span class="required">*</span></label>
-          <textarea id="mHtml" rows="12" placeholder="<h2>Heading</h2><p>Text</p><ul><li>Point</li></ul><table>...</table>">${escapeHtml(ex.html || "")}</textarea>
+          <textarea id="mHtml" rows="10" placeholder="<h2>Heading</h2><p>Text</p><ul><li>Point</li></ul>">${escapeHtml(ex.html || "")}</textarea>
         </div>
-        <div><label>Resources (YouTube / PDF / Website)</label>
+        <div>
+          <label>Resources (YouTube / PDF / Website)</label>
           <div id="resBox"></div>
           <button class="btn btn-small mt-8" id="addRes" type="button">+ Add Resource</button>
         </div>
@@ -1673,41 +1681,72 @@ function openMaterialForm(chapterId, id, subjectId) {
       </div>
       <div class="form-actions"><button class="btn" data-modal-close>Cancel</button><button class="btn btn-primary" id="saveMat">Save</button></div>
     `, true);
+
     function renderResEditor() {
-      const box = $("#resBox"); if (!box) return;
+      const box = $("#resBox");
+      if (!box) return;
+      if (S.editResources.length === 0) {
+        box.innerHTML = `<p class="small muted" style="margin:8px 0">No resources yet. Click "+ Add Resource".</p>`;
+        return;
+      }
       box.innerHTML = S.editResources.map((r, i) => `
         <div class="editor-option">
-          <div class="mini-row"><input type="text" data-rt="${i}" value="${escapeHtml(r.title || "")}" placeholder="Title" style="flex:1"></div>
-          <div class="mini-row mt-8">
-            <input type="url" data-ru="${i}" value="${escapeHtml(r.url || "")}" placeholder="https://..." style="flex:1">
-            <select data-rty="${i}">
-              <option value="youtube" ${r.type === "youtube" ? "selected" : ""}>YouTube</option>
-              <option value="pdf" ${r.type === "pdf" ? "selected" : ""}>PDF</option>
-              <option value="website" ${r.type === "website" ? "selected" : ""}>Website</option>
+          <div class="mini-row">
+            <select data-rty="${i}" style="min-width:130px">
+              <option value="youtube" ${r.type === "youtube" ? "selected" : ""}>📺 YouTube</option>
+              <option value="pdf" ${r.type === "pdf" ? "selected" : ""}>📄 PDF</option>
+              <option value="website" ${r.type === "website" ? "selected" : ""}>🌐 Website</option>
             </select>
+            <input type="text" data-rt="${i}" value="${escapeHtml(r.title || "")}" placeholder="Title (optional)" style="flex:1">
             <button class="btn btn-small btn-danger" type="button" data-rr="${i}">✕</button>
           </div>
+          <input type="url" data-ru="${i}" value="${escapeHtml(r.url || "")}" placeholder="https://..." class="mt-8" style="width:100%;min-height:38px;border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:6px 10px">
         </div>`).join("");
+      $$("[data-rty]").forEach(s => s.addEventListener("change", () => { S.editResources[+s.dataset.rty].type = s.value; }));
       $$("[data-rt]").forEach(i => i.addEventListener("input", () => { S.editResources[+i.dataset.rt].title = i.value; }));
       $$("[data-ru]").forEach(i => i.addEventListener("input", () => { S.editResources[+i.dataset.ru].url = i.value; }));
-      $$("[data-rty]").forEach(s => s.addEventListener("change", () => { S.editResources[+s.dataset.rty].type = s.value; }));
       $$("[data-rr]").forEach(b => b.addEventListener("click", () => { S.editResources.splice(+b.dataset.rr, 1); renderResEditor(); }));
     }
     renderResEditor();
     $("#addRes").onclick = () => { S.editResources.push({ title: "", url: "", type: "youtube" }); renderResEditor(); };
+
     $("#saveMat").onclick = async () => {
       const btn = $("#saveMat"); btn.disabled = true; btn.textContent = "Saving…";
       try {
         const title = $("#mTitle").value.trim();
         const html = $("#mHtml").value;
         if (!title || !html.trim()) { toast("Title and HTML required.", "error"); btn.disabled = false; btn.textContent = "Save"; return; }
-        const data = { title, html, level: $("#mLevel").value, resources: S.editResources.filter(r => r.url && r.title), chapterId, subjectId, order: 0, status: $("#mStatus").value, updatedAt: serverTimestamp() };
+
+        // FIXED: Only require URL. Auto-fill title and prepend https if missing.
+        const cleanResources = S.editResources
+          .filter(r => r.url && r.url.trim())
+          .map(r => {
+            let url = r.url.trim();
+            if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = "https://" + url;
+            const type = r.type || "website";
+            const fallback = type === "youtube" ? "YouTube Video" : type === "pdf" ? "PDF Document" : "Website";
+            return { title: (r.title || "").trim() || fallback, url, type };
+          })
+          .filter(r => safeUrl(r.url)); // final validation
+
+        const data = {
+          title, html, level: $("#mLevel").value,
+          resources: cleanResources,
+          chapterId, subjectId, order: 0, status: $("#mStatus").value,
+          updatedAt: serverTimestamp()
+        };
         if (!id) data.createdAt = serverTimestamp();
         const ref = id ? doc(db, "materials", id) : doc(collection(db, "materials"));
         await setDoc(ref, data, { merge: true });
         MEM.clear();
-        toast("Saved.", "success"); closeModal(); router();
-      } catch (err) { toast(friendlyError(err, "saving"), "error"); btn.disabled = false; btn.textContent = "Save"; }
+        toast(`Saved with ${cleanResources.length} resource(s).`, "success");
+        closeModal();
+        router();
+      } catch (err) {
+        console.error("Save material error", err);
+        toast(friendlyError(err, "saving"), "error");
+        btn.disabled = false; btn.textContent = "Save";
+      }
     };
   })();
 }
@@ -1875,7 +1914,6 @@ async function renderAdminImport(token) {
     const sid = cb.dataset.sid;
     $$(`.ch-check[data-sid="${sid}"]`).forEach(ch => ch.checked = cb.checked);
   }));
-
   $("#selAll").onclick = () => { $$(".sub-check, .ch-check").forEach(c => c.checked = true); };
   $("#selNone").onclick = () => { $$(".sub-check, .ch-check").forEach(c => c.checked = false); };
 
@@ -1900,10 +1938,8 @@ async function renderAdminImport(token) {
       const parsed = JSON.parse(text);
       const subjects = Array.isArray(parsed) ? parsed : (parsed.subject ? [parsed] : (parsed.subjects || []));
       if (!subjects.length) { toast("No subjects.", "error"); btn.disabled = false; btn.textContent = "Validate & Import"; return; }
-
       const mode = $("#impMode").value;
       let sub = 0, ch = 0, mat = 0, q = 0, skip = 0;
-
       for (const sBlock of subjects) {
         const sd = sBlock.subject || sBlock;
         const sRef = sd.id ? doc(db, "subjects", sd.id) : doc(collection(db, "subjects"));
@@ -1912,7 +1948,6 @@ async function renderAdminImport(token) {
         await setDoc(sRef, { title: sd.title || "Untitled", description: sd.description || "", status: sd.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
         sub++;
         const sid = sRef.id;
-
         for (const cBlock of (sBlock.chapters || [])) {
           const cRef = cBlock.id ? doc(db, "chapters", cBlock.id) : doc(collection(db, "chapters"));
           const cex = await getDoc(cRef);
@@ -1920,13 +1955,11 @@ async function renderAdminImport(token) {
           await setDoc(cRef, { title: cBlock.title || "Untitled", chapterNumber: Number(cBlock.chapterNumber || 1), description: cBlock.description || "", subjectId: sid, status: cBlock.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
           ch++;
           const cid = cRef.id;
-
           for (const m of (cBlock.materials || [])) {
             const mRef = m.id ? doc(db, "materials", m.id) : doc(collection(db, "materials"));
             await setDoc(mRef, { title: m.title || "", html: m.html || m.content || "", level: m.level || "L1", importance: m.importance || "normal", resources: m.resources || [], chapterId: cid, subjectId: sid, order: Number(m.order || 0), status: m.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
             mat++;
           }
-
           for (const qq of (cBlock.questions || [])) {
             const qRef = qq.id ? doc(db, "questions", qq.id) : doc(collection(db, "questions"));
             await setDoc(qRef, { questionText: qq.questionText || "", options: qq.options || [], correctOptionId: qq.correctOptionId || "", explanation: qq.explanation || "", level: qq.level || "L1", importance: qq.importance || "normal", chapterId: cid, subjectId: sid, order: Number(qq.order || 0), status: qq.status || "draft", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
@@ -1950,15 +1983,12 @@ async function renderAdminImport(token) {
       const incQuestions = $("#incQuestions").checked;
       const selectedSubjectIds = new Set($$(".sub-check:checked").map(c => c.dataset.sid));
       const selectedChapterIds = new Set($$(".ch-check:checked").map(c => c.dataset.cid));
-
       if (selectedSubjectIds.size === 0 && selectedChapterIds.size === 0) {
-        toast("Select at least one subject or chapter.", "error");
+        toast("Select at least one.", "error");
         btn.disabled = false; btn.textContent = "📤 Export selected";
         return;
       }
-
       const result = { subjects: [], exportedAt: new Date().toISOString() };
-
       if (expType === "full" || expType === "chapters") {
         for (const s of allSubjects) {
           if (!selectedSubjectIds.has(s.id)) continue;
@@ -1996,7 +2026,6 @@ async function renderAdminImport(token) {
         result.questions = questions;
         result.materials = materials;
       }
-
       downloadFile(`export-${Date.now()}.json`, JSON.stringify(result, null, 2), "application/json");
       toast("Exported.", "success");
     } catch (err) {
